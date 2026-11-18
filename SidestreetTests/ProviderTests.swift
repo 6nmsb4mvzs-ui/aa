@@ -267,6 +267,23 @@ final class APIFailureTests: XCTestCase {
                        "the second query goes straight to the healthy endpoint")
     }
 
+    func testSlowPrimaryIsHedgedWithNextEndpoint() async throws {
+        let client = MockHTTPClient { request in
+            if request.url.host == "overpass-api.de" {
+                try await Task.sleep(nanoseconds: 3_000_000_000) // very slow primary
+                return MockHTTPClient.ok(#"{"elements":[]}"#)
+            }
+            return MockHTTPClient.ok(overpassFixture)
+        }
+        var provider = OverpassProvider(client: client, endpoints: OverpassProvider.defaultEndpoints, health: nil)
+        provider.hedgeDelay = 0.2
+        let started = Date()
+        let places = try await provider.fetch(.niche, area: Fixture.area(), now: now)
+        XCTAssertFalse(places.isEmpty, "answer came from the hedged second endpoint")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2.0, "did not wait for the slow primary")
+        XCTAssertEqual(client.requests.map { $0.url.host! }, ["overpass-api.de", "overpass.private.coffee"])
+    }
+
     func testOverpassRateLimitOnAllEndpointsThrows() async {
         let client = MockHTTPClient { _ in MockHTTPClient.status(429, headers: ["Retry-After": "30"]) }
         do {

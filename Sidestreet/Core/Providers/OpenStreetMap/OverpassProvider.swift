@@ -6,8 +6,8 @@ import Foundation
 /// - Usage policy: identify the app (User-Agent), no parallel queries, cache
 ///   results, pause after HTTP 429. Queries are serialised by
 ///   `HostRateLimiter` and results are cached by `DiscoveryCache`.
-/// - The main instance is often overloaded, so a second public instance is
-///   used as a fallback on timeouts, 429 and 5xx responses.
+/// - The main instance is often overloaded, so further instances are asked
+///   when it fails or is slow (hedged requests, one query per server).
 struct OverpassProvider: Sendable {
     static let defaultEndpoints: [URL] = [
         URL(string: "https://overpass-api.de/api/interpreter")!,
@@ -65,47 +65,114 @@ struct OverpassProvider: Sendable {
 
     var health: EndpointHealth? = EndpointHealth.shared
 
+    /// Delay before also asking the next endpoint while the current one is
+    /// still working ("hedged" request). Different endpoints are different
+    /// servers, so this never runs parallel queries against one server.
+    var hedgeDelay: TimeInterval = 15
+    /// Per-request timeout. Public Overpass servers can queue requests for
+    /// 30–45 s when busy, so this is generous; other sources fill the feed meanwhile.
+    var requestTimeout: TimeInterval = 60
+
     func run(query: String, endpoints: [URL]? = nil) async throws -> OverpassResponse {
-        var lastError: Error = NetworkError.invalidResponse
         var candidates = endpoints ?? self.endpoints ?? Self.defaultEndpoints
         if let health { candidates = await health.order(candidates) }
-        for endpoint in candidates {
-            try Task.checkCancellation()
-            do {
-                var allowed = CharacterSet.alphanumerics
-                allowed.insert(charactersIn: "-._~")
-                let body = "data=" + (query.addingPercentEncoding(withAllowedCharacters: allowed) ?? "")
-                let request = HTTPRequest(
-                    url: endpoint,
-                    method: .post,
-                    headers: ["Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
-                              "Accept": "application/json"],
-                    body: Data(body.utf8),
-                    timeout: 30,
-                    maxBytes: 20 * 1024 * 1024
-                )
-                let response = try await client.sendChecked(request)
-                let decoded: OverpassResponse
-                do {
-                    decoded = try JSONDecoder().decode(OverpassResponse.self, from: response.data)
-                } catch {
-                    // Overpass returns HTML/XML error pages with status 200 on some failures.
-                    throw NetworkError.decoding("Overpass")
-                }
-                if decoded.elements.isEmpty, let remark = decoded.remark, remark.lowercased().contains("error") {
-                    throw NetworkError.httpStatus(504)
-                }
-                await health?.markSucceeded(endpoint)
-                return decoded
-            } catch let error as NetworkError {
-                lastError = error
-                if error == .cancelled { throw error }
-                guard error.isTransient || error == .decoding("Overpass") else { throw error }
-                await health?.markFailed(endpoint)
-                continue
-            }
+        guard !candidates.isEmpty else { throw NetworkError.invalidResponse }
+
+        enum Event: Sendable {
+            case result(URL, Result<OverpassResponse, NetworkError>)
+            case hedge
         }
-        throw lastError
+
+        return try await withThrowingTaskGroup(of: Event.self) { group in
+            var nextIndex = 0
+            var running = 0
+            var lastError: NetworkError = .invalidResponse
+
+            func startNext() {
+                guard nextIndex < candidates.count else { return }
+                let endpoint = candidates[nextIndex]
+                nextIndex += 1
+                running += 1
+                group.addTask {
+                    do {
+                        return .result(endpoint, .success(try await fetchOnce(query: query, endpoint: endpoint)))
+                    } catch let error as NetworkError {
+                        return .result(endpoint, .failure(error))
+                    } catch is CancellationError {
+                        return .result(endpoint, .failure(.cancelled))
+                    } catch {
+                        return .result(endpoint, .failure(.transport(error.localizedDescription)))
+                    }
+                }
+                if nextIndex < candidates.count {
+                    let delay = hedgeDelay
+                    group.addTask {
+                        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                        return .hedge
+                    }
+                }
+            }
+
+            startNext()
+            while let event = try await group.next() {
+                switch event {
+                case .hedge:
+                    startNext()
+                case let .result(endpoint, .success(response)):
+                    await health?.markSucceeded(endpoint)
+                    group.cancelAll()
+                    return response
+                case let .result(endpoint, .failure(error)):
+                    running -= 1
+                    if error == .cancelled {
+                        if Task.isCancelled { throw error }
+                        continue
+                    }
+                    lastError = error
+                    // Non-transient errors (e.g. HTTP 400 = bad query) won't improve elsewhere.
+                    guard error.isTransient || error == .decoding("Overpass") else {
+                        group.cancelAll()
+                        throw error
+                    }
+                    await health?.markFailed(endpoint)
+                    if nextIndex < candidates.count {
+                        startNext()
+                    } else if running == 0 {
+                        group.cancelAll()
+                        throw lastError
+                    }
+                }
+            }
+            throw lastError
+        }
+    }
+
+    private func fetchOnce(query: String, endpoint: URL) async throws -> OverpassResponse {
+        try Task.checkCancellation()
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        let body = "data=" + (query.addingPercentEncoding(withAllowedCharacters: allowed) ?? "")
+        let request = HTTPRequest(
+            url: endpoint,
+            method: .post,
+            headers: ["Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
+                      "Accept": "application/json"],
+            body: Data(body.utf8),
+            timeout: requestTimeout,
+            maxBytes: 20 * 1024 * 1024
+        )
+        let response = try await client.sendChecked(request)
+        let decoded: OverpassResponse
+        do {
+            decoded = try JSONDecoder().decode(OverpassResponse.self, from: response.data)
+        } catch {
+            // Overpass returns HTML/XML error pages with status 200 on some failures.
+            throw NetworkError.decoding("Overpass")
+        }
+        if decoded.elements.isEmpty, let remark = decoded.remark, remark.lowercased().contains("error") {
+            throw NetworkError.httpStatus(504)
+        }
+        return decoded
     }
 
     static func places(from response: OverpassResponse, area: SearchArea, now: Date) -> [Place] {

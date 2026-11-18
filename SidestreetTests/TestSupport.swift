@@ -68,7 +68,7 @@ enum Fixture {
 
 /// Scripted HTTP client: maps requests to canned responses or errors.
 final class MockHTTPClient: HTTPClient, @unchecked Sendable {
-    typealias Handler = @Sendable (HTTPRequest) throws -> HTTPResponse
+    typealias Handler = @Sendable (HTTPRequest) async throws -> HTTPResponse
     private let lock = NSLock()
     private var _requests: [HTTPRequest] = []
     private let handler: Handler
@@ -90,7 +90,7 @@ final class MockHTTPClient: HTTPClient, @unchecked Sendable {
 
     func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         record(request)
-        return try handler(request)
+        return try await handler(request)
     }
 
     static func ok(_ body: String, url: URL = URL(string: "https://example.org")!, headers: [String: String] = [:]) -> HTTPResponse {
