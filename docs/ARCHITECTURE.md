@@ -15,7 +15,7 @@ Sidestreet/
 │   ├── Networking/           HTTPClient abstraction, URLSession client, per-host rate limiter, robots.txt
 │   ├── OpeningHours/         OSM opening_hours parser + open/closed evaluation (time-zone aware)
 │   ├── Providers/            OpenStreetMap (Overpass), Wikidata, Wikipedia, Commons, venue events, YouTube
-│   ├── Engine/               DiscoveryEngine, PlaceValidator, Deduplicator, NicheScorer, FeedRanker
+│   ├── Engine/               DiscoveryEngine, PlaceValidator, Deduplicator, NicheScorer, FeedRanker, HotspotDetector
 │   ├── Storage/              DiscoveryCache (temporary), SearchHistoryStore (local), ResponseCache
 │   ├── Links/                Outbound links to TikTok / Instagram / Reddit / YouTube / Pinterest / Google Maps
 │   └── Text/                 Name normalisation, fuzzy matching, subculture lexicon, MD5
@@ -24,7 +24,7 @@ Sidestreet/
 │                             BackgroundRefresh (BGTaskScheduler), PlaceDetailService (lazy profile lookups)
 ├── Features/                 SwiftUI screens: Discover, Map, Place (preview → profile), Location picker, History, Settings
 ├── DesignSystem/             Theme tokens (dark urban palette, typography) and shared components
-├── Support/                  Formatting helpers, SampleData (clearly-labelled fictional data)
+├── Support/                  Formatting helpers, SampleData (clearly-labelled fictional data), SwiftUI previews
 ├── Assets.xcassets           App icon, accent and launch colours
 └── PrivacyInfo.xcprivacy     Privacy manifest (no tracking, no data collection)
 SidestreetTests/              XCTest suites — run both in Xcode (⌘U) and with `swift test`
@@ -50,13 +50,21 @@ area ──→  ├──────────── Wikidata around-query   
                                 ▼
           Wikidata enrichment (fame, images) → recurring market events → venue-website events
                                 ▼
-          final snapshot → DiscoveryCache (24 h) → AppModel → FeedRanker (detached task) → feed pages of 20
+          final snapshot → DiscoveryCache (24 h) → AppModel → FeedRanker + HotspotDetector (detached task) → feed pages of 20
 ```
 
 - **Progressive loading:** the engine yields an `AsyncStream<DiscoveryUpdate>` (`initial` → `expanded` → `complete`, or `cached`). The feed shows the first results as soon as any source answers.
 - **Cancellation:** changing city, GPS position or radius cancels the previous stream (and its network tasks).
 - **Radius changes** are debounced (650 ms). A smaller radius around the same centre is answered from the cache with no network request; a larger radius fetches again.
 - **Stale-while-revalidate:** cached results older than 6 h are shown immediately and refreshed quietly.
+
+## Hotspots ("clusters worth a walk")
+
+`HotspotDetector` looks for streets where several independent fashion stores (thrift, vintage, streetwear, skate, sneaker, designer, boutiques), street-art pieces or bars/clubs/venues cluster within ~220 m. Clusters of four or more are named after their dominant street (or district) and shown as an expandable feed card. Chains and repeated brand names are excluded. This answers "where should I go shopping/walking?" with data, beyond a flat list of stores. Brands stocked and local designers are not available from any free source; profiles link to Instagram/TikTok searches for those.
+
+## Previews & sample data
+
+`Support/Previews.swift` defines SwiftUI previews (whole app, cards, profile) driven by `SampleData` — fictional places flagged `isSample`, prefixed "Sample ·", rejected by the validator and always shown with a "SAMPLE DATA" banner. The same data powers *Settings → Demo mode*.
 
 ## Concurrency
 

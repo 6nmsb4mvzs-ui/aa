@@ -25,6 +25,7 @@
 2. **Validation & de-duplication** across sources (identifiers + location + name similarity).
 3. **Automatic niche score** — independence, obscurity, uniqueness, subculture relevance, community, source diversity, local buzz — damped by data confidence so unreliable obscurities can't win. See **[docs/SCORING.md](docs/SCORING.md)**.
 4. **Hybrid feed ranking** — niche, quality, affordability, distance, relevance — with a variety pass so similar places don't cluster.
+5. **Hotspots** — streets where independent fashion stores, street art or nightlife cluster ("Oranienstraße — 6 independent fashion stores") are detected and shown as walkable districts.
 
 TikTok, Instagram, Pinterest and Reddit have **no usable public API** for a personal app (details in **[docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)**), so the app never scrapes them; it links to their own search instead.
 
