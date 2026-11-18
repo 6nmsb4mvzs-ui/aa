@@ -62,10 +62,12 @@ jobs:
         id: check
         run: |
           if [ -f Sidestreet.xcodeproj/project.pbxproj ]; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
-      - name: Show Xcode
+      - name: Select newest stable Xcode
         if: steps.check.outputs.exists == 'true'
         run: |
           ls -d /Applications/Xcode*.app || true
+          XCODE=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -viE "beta|release_candidate|_rc" | sort -V | tail -1)
+          if [ -n "$XCODE" ]; then sudo xcode-select -s "$XCODE"; fi
           xcodebuild -version
           xcrun simctl list runtimes | grep -i ios || true
       - name: Pick and boot an iPhone simulator
