@@ -174,6 +174,21 @@ final class AppModel {
         }
     }
 
+    /// When the app returns to the foreground, take one fresh fix (no
+    /// continuous tracking) and re-centre if the user has moved noticeably.
+    func appBecameActive() async {
+        guard hasStarted, !isDemo, usesCurrentLocation, !isResolvingLocation,
+              location.authorization.allowsLocation, let previous = area?.center else { return }
+        if let fix = location.lastFix, Date().timeIntervalSince(fix.timestamp) < 5 * 60 { return }
+        isResolvingLocation = true
+        defer { isResolvingLocation = false }
+        guard let fix = try? await location.currentLocation(),
+              GeoMath.distance(fix.coordinate, previous) > 400 else { return }
+        currentLocationInfo = await location.describe(fix.coordinate)
+        recomputeResolution()
+        discover()
+    }
+
     // MARK: - Centre selection
 
     func useCurrentLocation() async {

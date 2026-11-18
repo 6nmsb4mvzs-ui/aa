@@ -5,6 +5,7 @@ struct RootView: View {
     enum Tab: Hashable { case discover, map, history, settings }
 
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     @State private var tab: Tab = .discover
 
     var body: some View {
@@ -28,6 +29,9 @@ struct RootView: View {
         .task { await model.start() }
         .onChange(of: model.location.authorization) { _, _ in
             Task { await model.authorizationChanged() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await model.appBecameActive() } }
         }
     }
 }
