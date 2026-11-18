@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      all_cities:
+        description: "Run the live discovery report for all test cities"
+        type: boolean
+        default: false
+  schedule:
+    # Weekly check that the free data sources still work as integrated.
+    - cron: "17 5 * * 1"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-tests:
+    name: Core unit tests (Linux, Swift 6.1)
+    runs-on: ubuntu-latest
+    container: swift:6.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test the discovery core
+        run: swift test --parallel
+
+  live-sources:
+    name: Live data sources (OSM, Wikidata, Commons, venue sites)
+    runs-on: ubuntu-latest
+    container: swift:6.1
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run live integration tests and print discovery report
+        env:
+          LIVE_SOURCES: "1"
+          LIVE_ALL_CITIES: ${{ github.event.inputs.all_cities == 'true' && '1' || '0' }}
+        run: swift test --filter LiveSourcesTests
+
+  ios:
+    name: iOS app build + tests (Xcode)
+    runs-on: macos-latest
+    if: hashFiles('Sidestreet.xcodeproj/project.pbxproj') != ''
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app || true
+          XCODE=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$XCODE" ]; then sudo xcode-select -s "$XCODE"; fi
+          xcodebuild -version
+      - name: Pick an iPhone simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          best=None
+          for runtime,devs in d.items():
+              if 'iOS' not in runtime: continue
+              for dev in devs:
+                  if dev['name'].startswith('iPhone') and dev.get('isAvailable', True):
+                      ver=runtime.split('iOS-')[-1]
+                      key=tuple(int(x) for x in ver.split('-') if x.isdigit())
+                      if best is None or key>best[0]: best=(key,dev['udid'],dev['name'],runtime)
+          print(best[1]); print(best[2], best[3], file=sys.stderr)
+          ")
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+      - name: Build app (no signing)
+        run: |
+          set -o pipefail
+          xcodebuild -project Sidestreet.xcodeproj -scheme Sidestreet \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO build | tee build.log | grep -E "error:|warning:|BUILD" || true
+          grep -q "BUILD SUCCEEDED" build.log
+      - name: Run unit tests on simulator
+        run: |
+          set -o pipefail
+          xcodebuild -project Sidestreet.xcodeproj -scheme Sidestreet \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO test | tee test.log | grep -E "error:|Test Case.*failed|Executed|TEST" || true
+          grep -q "TEST SUCCEEDED" test.log
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcode-logs
+          path: "*.log"
