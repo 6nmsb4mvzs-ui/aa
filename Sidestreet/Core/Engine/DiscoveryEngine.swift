@@ -81,80 +81,88 @@ final class DiscoveryEngine: Sendable {
             assemble(places: collected, events: events, area: area, statuses: statuses, now: now)
         }
 
-        // Stage 1 — distinctive places (fast, sparse query).
-        if let overpass = sources.overpass {
-            statuses[.openStreetMap] = .loading
-            emit(DiscoveryUpdate(phase: .initial, snapshot: snapshot()))
-            do {
-                let niche = try await overpass.fetch(.niche, area: area, now: now)
-                collected += niche
-                statuses[.openStreetMap] = .loaded(count: niche.count)
-            } catch {
-                statuses[.openStreetMap] = .failed(message: Self.describe(error))
-            }
-        } else {
+        // Stages 1+2 — all sources start at once. OpenStreetMap runs its two
+        // queries sequentially (niche first, then everyday, per the Overpass
+        // policy) while Wikidata and Apple Maps run concurrently on other
+        // hosts, so a slow Overpass server never delays the first results.
+        enum StageResult: Sendable {
+            case places(SourceProvider, [Place], stage: OverpassQueryBuilder.Kind?)
+            case failure(SourceProvider, String, stage: OverpassQueryBuilder.Kind?)
+        }
+        if sources.overpass != nil { statuses[.openStreetMap] = .loading } else {
             statuses[.openStreetMap] = .skipped(reason: "Disabled")
         }
-        if Task.isCancelled { return }
-        let initial = snapshot()
-        emit(DiscoveryUpdate(phase: .initial, snapshot: initial))
-
-        // Stage 2 — everyday places + secondary sources, concurrently.
-        enum StageResult: Sendable {
-            case places(SourceProvider, [Place], isEveryday: Bool)
-            case failure(SourceProvider, String, isEveryday: Bool)
-        }
-        let osmNicheFailed = statuses[.openStreetMap]?.isFailure ?? false
         if sources.wikidata != nil { statuses[.wikidata] = .loading }
         for provider in sources.supplementary { statuses[provider.provider] = .loading }
+        emit(DiscoveryUpdate(phase: .initial, snapshot: snapshot()))
+
+        var osmLoaded = 0
+        var osmNicheFailed = false
+        var emittedFirstResults = false
         await withTaskGroup(of: StageResult.self) { group in
             if let overpass = sources.overpass {
                 group.addTask {
                     do {
-                        return .places(.openStreetMap, try await overpass.fetch(.everyday, area: area, now: now), isEveryday: true)
+                        return .places(.openStreetMap, try await overpass.fetch(.niche, area: area, now: now), stage: .niche)
                     } catch {
-                        return .failure(.openStreetMap, Self.describe(error), isEveryday: true)
+                        return .failure(.openStreetMap, Self.describe(error), stage: .niche)
                     }
                 }
             }
             if let wikidata = sources.wikidata {
                 group.addTask {
                     do {
-                        return .places(.wikidata, try await wikidata.searchPlaces(in: area, now: now), isEveryday: false)
+                        return .places(.wikidata, try await wikidata.searchPlaces(in: area, now: now), stage: nil)
                     } catch {
-                        return .failure(.wikidata, Self.describe(error), isEveryday: false)
+                        return .failure(.wikidata, Self.describe(error), stage: nil)
                     }
                 }
             }
             for provider in sources.supplementary {
                 group.addTask {
                     do {
-                        return .places(provider.provider, try await provider.searchPlaces(in: area, now: now), isEveryday: false)
+                        return .places(provider.provider, try await provider.searchPlaces(in: area, now: now), stage: nil)
                     } catch {
-                        return .failure(provider.provider, Self.describe(error), isEveryday: false)
+                        return .failure(provider.provider, Self.describe(error), stage: nil)
                     }
                 }
             }
             for await result in group {
                 switch result {
-                case let .places(provider, places, isEveryday):
+                case let .places(provider, places, stage):
                     collected += places
-                    if provider == .openStreetMap && isEveryday {
-                        let previous: Int
-                        if case .loaded(let count)? = statuses[.openStreetMap] { previous = count } else { previous = 0 }
-                        statuses[.openStreetMap] = .loaded(count: previous + places.count)
+                    if provider == .openStreetMap {
+                        osmLoaded += places.count
+                        statuses[.openStreetMap] = .loaded(count: osmLoaded)
                     } else {
                         statuses[provider] = .loaded(count: places.count)
                     }
-                case let .failure(provider, message, isEveryday):
-                    if provider == .openStreetMap && isEveryday {
-                        if osmNicheFailed { statuses[.openStreetMap] = .failed(message: message) }
+                    // The niche query finished: queue the everyday query (same host, sequential).
+                    if stage == .niche, let overpass = sources.overpass, !Task.isCancelled {
+                        group.addTask {
+                            do {
+                                return .places(.openStreetMap, try await overpass.fetch(.everyday, area: area, now: now), stage: .everyday)
+                            } catch {
+                                return .failure(.openStreetMap, Self.describe(error), stage: .everyday)
+                            }
+                        }
+                    }
+                case let .failure(provider, message, stage):
+                    if provider == .openStreetMap {
+                        if stage == .niche {
+                            osmNicheFailed = true
+                            statuses[.openStreetMap] = .failed(message: message)
+                        } else if osmNicheFailed || osmLoaded == 0 {
+                            statuses[.openStreetMap] = .failed(message: message)
+                        }
                     } else {
                         statuses[provider] = .failed(message: message)
                     }
                 }
                 if Task.isCancelled { break }
-                emit(DiscoveryUpdate(phase: .expanded, snapshot: snapshot()))
+                let phase: DiscoveryUpdate.Phase = emittedFirstResults ? .expanded : .initial
+                if !collected.isEmpty { emittedFirstResults = true }
+                emit(DiscoveryUpdate(phase: phase, snapshot: snapshot()))
             }
         }
         if Task.isCancelled { return }

@@ -34,6 +34,17 @@ jobs:
     if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
+      - name: Probe Overpass endpoints with curl (network diagnosis)
+        run: |
+          command -v curl >/dev/null || (apt-get update -qq && apt-get install -y -qq curl >/dev/null)
+          for ep in https://overpass-api.de/api https://overpass.private.coffee/api; do
+            echo "== $ep/status"; curl -sS -m 15 -A "Sidestreet-CI/1.0 (https://github.com/)" "$ep/status" | head -8 || true
+            curl -sS -m 60 -o /tmp/out.json -w "== $ep/interpreter -> HTTP %{http_code} in %{time_total}s, %{size_download} bytes\n" \
+              -A "Sidestreet-CI/1.0 (https://github.com/)" \
+              --data-urlencode 'data=[out:json][timeout:25][bbox:52.48,13.39,52.51,13.44];nwr["shop"="second_hand"];out center 50;' \
+              "$ep/interpreter" || true
+            head -c 300 /tmp/out.json || true; echo
+          done
       - name: Run live integration tests and print discovery report
         env:
           LIVE_SOURCES: "1"
