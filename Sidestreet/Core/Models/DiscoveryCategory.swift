@@ -28,7 +28,7 @@ enum DiscoveryCategory: String, CaseIterable, Codable, Hashable, Sendable, Ident
         case .streetArt: return "Street Art"
         case .architecture: return "Urban Explore"
         case .photo: return "Photo Spots"
-        case .music: return "Music & Night"
+        case .music: return "Bars & Music"
         case .culture: return "Alt Culture"
         case .cafes: return "Cafés"
         case .food: return "Food"

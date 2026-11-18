@@ -76,8 +76,11 @@ final class LiveSourcesTests: XCTestCase {
             }
             let snapshot = try XCTUnwrap(final)
             let now = Date()
+            // LIVE_FILTER="music,fashion" ranks with those category filters on.
+            let filterNames = (ProcessInfo.processInfo.environment["LIVE_FILTER"] ?? "").split(separator: ",").map(String.init)
+            let filter = CategoryFilter(selected: Set(filterNames.compactMap(DiscoveryCategory.init(rawValue:))))
             let feed = FeedRanker().rank(places: snapshot.places, events: snapshot.events, area: area,
-                                         filter: CategoryFilter(), now: now)
+                                         filter: filter, now: now)
 
             print("\n==================== \(city.name) (r=\(Int(city.radius)) m) ====================")
             print("first results after: \(firstResultsAfter.map { String(format: "%.1fs", $0) } ?? "–"), complete after \(String(format: "%.1fs", Date().timeIntervalSince(started)))")
@@ -102,6 +105,16 @@ final class LiveSourcesTests: XCTestCase {
                                  p.name, p.kind.label, d, p.confidence.rawValue, sources, p.primaryImage != nil ? " · img" : ""))
                 case .event(let e):
                     print("  \(rank + 1). [EVENT] \(e.title) — \(e.kind.label) · \(e.start) · \(e.source.provider.rawValue)")
+                }
+            }
+            // LIVE_WATCH="Name1,Name2" prints where those places land in the feed.
+            for watched in (ProcessInfo.processInfo.environment["LIVE_WATCH"] ?? "").split(separator: ",") {
+                let needle = watched.lowercased()
+                if let index = feed.firstIndex(where: { if case .place(let p) = $0 { return p.name.lowercased().contains(needle) }; return false }),
+                   case .place(let p) = feed[index] {
+                    print("  watch: \(p.name) → position \(index + 1) of \(feed.count), \(p.kind.label), \(p.confidence.rawValue), score \(p.score?.display ?? 0)")
+                } else {
+                    print("  watch: \(watched) → not in feed")
                 }
             }
             let chains = snapshot.places.filter { $0.kind == .fashionChain }
