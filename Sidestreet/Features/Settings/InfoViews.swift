@@ -11,7 +11,7 @@ struct PrivacyView: View {
                 Text("No account, no login, no analytics, no advertising, no tracking and no crash reporting. Search history, settings and the cache stay on this iPhone. Location is requested only while the app is in use, as a single fix, and never in the background.")
             }
             Section("Who receives requests") {
-                PrivacyRow(service: "OpenStreetMap Overpass API", host: "overpass-api.de, overpass.private.coffee (fallback)",
+                PrivacyRow(service: "OpenStreetMap Overpass API", host: "overpass-api.de; fallbacks overpass.private.coffee, ovp.dresel.systems",
                            receives: "The search area (bounding box) and the categories queried.")
                 PrivacyRow(service: "Wikidata Query Service", host: "query.wikidata.org",
                            receives: "The search centre and radius.")

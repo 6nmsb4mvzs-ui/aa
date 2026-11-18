@@ -230,17 +230,47 @@ final class APIFailureTests: XCTestCase {
             if request.url.host == "overpass-api.de" { return MockHTTPClient.status(504) }
             return MockHTTPClient.ok(overpassFixture)
         }
-        let provider = OverpassProvider(client: client)
+        let provider = OverpassProvider(client: client, health: nil)
         let places = try await provider.fetch(.niche, area: Fixture.area(), now: now)
         XCTAssertFalse(places.isEmpty)
         XCTAssertEqual(client.requests.map { $0.url.host }, ["overpass-api.de", "overpass.private.coffee"])
         XCTAssertTrue(client.requests[0].decodedFormBody.hasPrefix("data=[out:json]"))
     }
 
+    func testRegionalFallbackEndpoints() async throws {
+        // Berlin → Europe extract as last resort; Tokyo → main instances only.
+        XCTAssertEqual(OverpassProvider.endpoints(for: Fixture.area()).last, OverpassProvider.europeEndpoint)
+        let tokyo = Fixture.area(center: GeoCoordinate(latitude: 35.66, longitude: 139.67))
+        XCTAssertEqual(OverpassProvider.endpoints(for: tokyo), OverpassProvider.defaultEndpoints)
+        let nyc = Fixture.area(center: GeoCoordinate(latitude: 40.69, longitude: -73.92))
+        XCTAssertEqual(OverpassProvider.endpoints(for: nyc).last, OverpassProvider.northAmericaEndpoint)
+
+        let client = MockHTTPClient { request in
+            if request.url.host == "ovp.dresel.systems" { return MockHTTPClient.ok(overpassFixture) }
+            throw NetworkError.timedOut
+        }
+        let places = try await OverpassProvider(client: client, health: nil).fetch(.niche, area: Fixture.area(), now: now)
+        XCTAssertFalse(places.isEmpty)
+        XCTAssertEqual(client.requests.count, 3)
+    }
+
+    func testFailingEndpointIsTriedLastAfterwards() async throws {
+        let health = OverpassProvider.EndpointHealth()
+        let client = MockHTTPClient { request in
+            if request.url.host == "overpass-api.de" { throw NetworkError.timedOut }
+            return MockHTTPClient.ok(overpassFixture)
+        }
+        let provider = OverpassProvider(client: client, endpoints: OverpassProvider.defaultEndpoints, health: health)
+        _ = try await provider.fetch(.niche, area: Fixture.area(), now: now)
+        _ = try await provider.fetch(.everyday, area: Fixture.area(), now: now)
+        XCTAssertEqual(client.requests.map { $0.url.host! }, ["overpass-api.de", "overpass.private.coffee", "overpass.private.coffee"],
+                       "the second query goes straight to the healthy endpoint")
+    }
+
     func testOverpassRateLimitOnAllEndpointsThrows() async {
         let client = MockHTTPClient { _ in MockHTTPClient.status(429, headers: ["Retry-After": "30"]) }
         do {
-            _ = try await OverpassProvider(client: client).fetch(.niche, area: Fixture.area(), now: now)
+            _ = try await OverpassProvider(client: client, endpoints: OverpassProvider.defaultEndpoints, health: nil).fetch(.niche, area: Fixture.area(), now: now)
             XCTFail("expected error")
         } catch let error as NetworkError {
             XCTAssertEqual(error, .rateLimited(retryAfter: 30))
@@ -252,7 +282,7 @@ final class APIFailureTests: XCTestCase {
     func testOverpassHTMLErrorPageIsADecodingFailure() async {
         let client = MockHTTPClient { _ in MockHTTPClient.ok("<html><body>runtime error: Query timed out</body></html>") }
         do {
-            _ = try await OverpassProvider(client: client).fetch(.niche, area: Fixture.area(), now: now)
+            _ = try await OverpassProvider(client: client, endpoints: OverpassProvider.defaultEndpoints, health: nil).fetch(.niche, area: Fixture.area(), now: now)
             XCTFail("expected error")
         } catch {
             XCTAssertEqual(error as? NetworkError, .decoding("Overpass"))
@@ -263,7 +293,7 @@ final class APIFailureTests: XCTestCase {
     func testNonTransientErrorDoesNotRetry() async {
         let client = MockHTTPClient { _ in MockHTTPClient.status(400) }
         do {
-            _ = try await OverpassProvider(client: client).fetch(.niche, area: Fixture.area(), now: now)
+            _ = try await OverpassProvider(client: client, health: nil).fetch(.niche, area: Fixture.area(), now: now)
             XCTFail("expected error")
         } catch {
             XCTAssertEqual(error as? NetworkError, .httpStatus(400))
@@ -278,7 +308,7 @@ final class APIFailureTests: XCTestCase {
             return MockHTTPClient.ok(overpassFixture)
         }
         let engine = DiscoveryEngine(
-            sources: .init(overpass: OverpassProvider(client: client), wikidata: WikidataProvider(client: client)),
+            sources: .init(overpass: OverpassProvider(client: client, health: nil), wikidata: WikidataProvider(client: client)),
             cache: DiscoveryCache(directory: nil),
             clock: { Fixture.referenceDate }
         )
@@ -296,7 +326,7 @@ final class APIFailureTests: XCTestCase {
 
     func testEngineReportsTotalFailure() async {
         let client = MockHTTPClient { _ in throw NetworkError.offline }
-        let engine = DiscoveryEngine(sources: .init(overpass: OverpassProvider(client: client)),
+        let engine = DiscoveryEngine(sources: .init(overpass: OverpassProvider(client: client, health: nil)),
                                      cache: DiscoveryCache(directory: nil), clock: { Fixture.referenceDate })
         var last: DiscoveryUpdate?
         for await update in engine.discover(area: Fixture.area()) { last = update }

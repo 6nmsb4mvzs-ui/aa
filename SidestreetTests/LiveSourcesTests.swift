@@ -123,7 +123,7 @@ final class LiveSourcesTests: XCTestCase {
         let area = SearchArea(center: Self.cities[0].center, radiusMeters: 2_000, label: "Berlin", subtitle: nil,
                               centerSource: .city, timeZoneIdentifier: "Europe/Berlin", countryCode: nil)
         var anySucceeded = false
-        for endpoint in OverpassProvider.defaultEndpoints {
+        for endpoint in OverpassProvider.endpoints(for: area) {
             for kind in [OverpassQueryBuilder.Kind.niche, .everyday] {
                 let started = Date()
                 let provider = OverpassProvider(client: client, endpoints: [endpoint])

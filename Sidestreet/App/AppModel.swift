@@ -53,6 +53,7 @@ final class AppModel {
     @ObservationIgnored private var rankTask: Task<Void, Never>?
     @ObservationIgnored private var radiusTask: Task<Void, Never>?
     @ObservationIgnored private var hasStarted = false
+    @ObservationIgnored private var isResolvingLocation = false
     @ObservationIgnored private var recordedHistoryForArea: SearchArea?
 
     init(settings: AppSettings) {
@@ -156,7 +157,8 @@ final class AppModel {
     /// Called when the location permission changes (e.g. after returning
     /// from the Settings app).
     func authorizationChanged() async {
-        guard hasStarted, !isDemo else { return }
+        // A user-initiated location flow handles the change itself.
+        guard hasStarted, !isDemo, !isResolvingLocation else { return }
         if usesCurrentLocation && location.authorization.allowsLocation {
             await locateAndDiscover()
         } else {
@@ -172,6 +174,8 @@ final class AppModel {
         usesCurrentLocation = true
         settings.usesCurrentLocation = true
         if isDemo { return }
+        isResolvingLocation = true
+        defer { isResolvingLocation = false }
         if location.authorization == .notDetermined {
             _ = await location.requestAuthorization()
         }

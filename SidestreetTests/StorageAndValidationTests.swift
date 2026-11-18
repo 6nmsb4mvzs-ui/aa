@@ -127,7 +127,7 @@ final class DiscoveryCacheTests: XCTestCase {
     func testEngineUsesCacheInsteadOfNetwork() async {
         let client = MockHTTPClient { _ in MockHTTPClient.ok(overpassFixture) }
         let cache = DiscoveryCache(directory: nil, clock: { Fixture.referenceDate })
-        let engine = DiscoveryEngine(sources: .init(overpass: OverpassProvider(client: client)), cache: cache,
+        let engine = DiscoveryEngine(sources: .init(overpass: OverpassProvider(client: client, health: nil)), cache: cache,
                                      clock: { Fixture.referenceDate })
         for await _ in engine.discover(area: Fixture.area()) {}
         let requestsAfterFirst = client.requests.count

@@ -14,18 +14,62 @@ struct OverpassProvider: Sendable {
         URL(string: "https://overpass.private.coffee/api/interpreter")!,
     ]
 
+    /// Free regional instances (listed on the OSM wiki; no key, ≤ 4 parallel
+    /// queries per IP, daily-updated extracts). Used only as a last resort
+    /// for areas they cover.
+    static let europeEndpoint = URL(string: "https://ovp.dresel.systems/api/interpreter")!
+    static let northAmericaEndpoint = URL(string: "https://ovp.dresel.systems/api-na/interpreter")!
+
+    /// Endpoints to try, in order, for an area.
+    static func endpoints(for area: SearchArea) -> [URL] {
+        var list = defaultEndpoints
+        let c = area.center
+        if (34...72).contains(c.latitude) && (-25...45).contains(c.longitude) {
+            list.append(europeEndpoint)
+        } else if (14...84).contains(c.latitude) && (-170 ... -50).contains(c.longitude) {
+            list.append(northAmericaEndpoint)
+        }
+        return list
+    }
+
     var client: HTTPClient
-    var endpoints: [URL] = OverpassProvider.defaultEndpoints
+    /// Fixed endpoint list (tests/diagnostics). When nil, `endpoints(for:)` decides.
+    var endpoints: [URL]? = nil
 
     func fetch(_ kind: OverpassQueryBuilder.Kind, area: SearchArea, now: Date) async throws -> [Place] {
         let query = OverpassQueryBuilder.query(kind, area: area)
-        let response = try await run(query: query)
+        let response = try await run(query: query, endpoints: endpoints ?? Self.endpoints(for: area))
         return Self.places(from: response, area: area, now: now)
     }
 
-    func run(query: String) async throws -> OverpassResponse {
+    /// Remembers endpoints that recently failed so the next query (e.g. the
+    /// "everyday" query right after the "niche" one) doesn't wait on them again.
+    actor EndpointHealth {
+        static let shared = EndpointHealth()
+        private var coolingDownUntil: [URL: Date] = [:]
+
+        func order(_ endpoints: [URL], now: Date = Date()) -> [URL] {
+            let healthy = endpoints.filter { (coolingDownUntil[$0] ?? .distantPast) <= now }
+            let cooling = endpoints.filter { (coolingDownUntil[$0] ?? .distantPast) > now }
+            return healthy + cooling
+        }
+
+        func markFailed(_ endpoint: URL, now: Date = Date()) {
+            coolingDownUntil[endpoint] = now.addingTimeInterval(5 * 60)
+        }
+
+        func markSucceeded(_ endpoint: URL) {
+            coolingDownUntil[endpoint] = nil
+        }
+    }
+
+    var health: EndpointHealth? = EndpointHealth.shared
+
+    func run(query: String, endpoints: [URL]? = nil) async throws -> OverpassResponse {
         var lastError: Error = NetworkError.invalidResponse
-        for endpoint in endpoints {
+        var candidates = endpoints ?? self.endpoints ?? Self.defaultEndpoints
+        if let health { candidates = await health.order(candidates) }
+        for endpoint in candidates {
             try Task.checkCancellation()
             do {
                 var allowed = CharacterSet.alphanumerics
@@ -37,7 +81,7 @@ struct OverpassProvider: Sendable {
                     headers: ["Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
                               "Accept": "application/json"],
                     body: Data(body.utf8),
-                    timeout: 35,
+                    timeout: 30,
                     maxBytes: 20 * 1024 * 1024
                 )
                 let response = try await client.sendChecked(request)
@@ -51,11 +95,13 @@ struct OverpassProvider: Sendable {
                 if decoded.elements.isEmpty, let remark = decoded.remark, remark.lowercased().contains("error") {
                     throw NetworkError.httpStatus(504)
                 }
+                await health?.markSucceeded(endpoint)
                 return decoded
             } catch let error as NetworkError {
                 lastError = error
                 if error == .cancelled { throw error }
                 guard error.isTransient || error == .decoding("Overpass") else { throw error }
+                await health?.markFailed(endpoint)
                 continue
             }
         }

@@ -62,7 +62,13 @@ struct DiscoverView: View {
                     ? "Your location couldn't be found. Search for a city to start discovering."
                     : "Location access is off, so Sidestreet can't centre on you. Search for a city instead, or allow location in the iOS Settings app."
             ) {
-                Button("Search a city") { showLocationPicker = true }.buttonStyle(PillButtonStyle())
+                VStack(spacing: 10) {
+                    Button("Search a city") { showLocationPicker = true }.buttonStyle(PillButtonStyle())
+                    if reason != .locationUnavailable, let url = URL(string: UIApplication.openSettingsURLString) {
+                        Button("Open iOS Settings") { UIApplication.shared.open(url) }
+                            .buttonStyle(PillButtonStyle(prominent: false))
+                    }
+                }
             }
         case .loading(let message):
             LoadingCards(message: message)
@@ -80,11 +86,16 @@ struct DiscoverView: View {
             StatusLine()
                 .padding(.horizontal, Theme.gutter)
                 .padding(.bottom, 12)
-            ForEach(model.visibleFeed) { entry in
+            ForEach(Array(model.visibleFeed.enumerated()), id: \.element.id) { index, entry in
                 FeedRow(entry: entry)
                     .padding(.horizontal, Theme.gutter)
                     .padding(.bottom, 18)
                     .onAppear { model.entryAppeared(entry) }
+                if index == min(7, model.feed.count - 1) {
+                    CityExploreCard()
+                        .padding(.horizontal, Theme.gutter)
+                        .padding(.bottom, 18)
+                }
             }
             FeedTail()
                 .padding(.horizontal, Theme.gutter)
