@@ -134,9 +134,20 @@ struct PlaceProfileView: View {
     }
 
     @ViewBuilder
+    /// Linked photos, then the found photo, then nearby photos (no duplicates).
+    private var allPhotos: [PlaceImage] {
+        var result: [PlaceImage] = place.images
+        if let foundPhoto, !result.contains(where: { $0.url == foundPhoto.url }) {
+            result.append(foundPhoto)
+        }
+        for photo in nearbyPhotos where !result.contains(where: { $0.url == photo.url }) {
+            result.append(photo)
+        }
+        return result
+    }
+
     private var photosSection: some View {
-        let linked = place.images
-        let all = linked + (foundPhoto.map { [$0] } ?? []) + nearbyPhotos.filter { $0.url != foundPhoto?.url }
+        let all: [PlaceImage] = allPhotos
         ProfileSection(title: "Photos & visual references") {
             if all.isEmpty && lookAroundScene == nil {
                 Text(didLoadDetails ? "No photos found in open image sources for this place." : "Looking for photos…")

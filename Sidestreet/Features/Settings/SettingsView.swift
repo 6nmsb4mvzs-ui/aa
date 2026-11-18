@@ -3,117 +3,167 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(AppSettings.self) private var settings
-    @State private var cacheSize: Int?
-    @State private var confirmClearHistory = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                DiscoverySettingsSection()
+                SourceSettingsSection()
+                StorageSettingsSection()
+                AboutSettingsSection()
+            }
+            .scrollContentBackground(.hidden)
+            .background(Theme.background)
+            .navigationTitle("Settings")
+            .onChange(of: sourceSettings) { _, _ in model.sourcesChanged() }
+            .onChange(of: settings.demoMode) { _, _ in Task { await model.demoModeChanged() } }
+            .onChange(of: settings.backgroundRefreshEnabled) { _, enabled in
+                if enabled { BackgroundRefresh.schedule() } else { BackgroundRefresh.cancel() }
+            }
+        }
+    }
+
+    /// Settings that require rebuilding the discovery engine.
+    private var sourceSettings: [Bool] {
+        [settings.appleMapsEnabled, settings.wikidataEnabled, settings.venueEventsEnabled]
+    }
+}
+
+private struct DiscoverySettingsSection: View {
+    @Environment(AppSettings.self) private var settings
+
+    var body: some View {
+        @Bindable var settings = settings
+        Section("Discovery") {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Default radius")
+                    Spacer()
+                    Text(Format.radius(settings.defaultRadiusMeters, metric: settings.useMetric))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                Slider(value: radiusBinding, in: sqrt(SearchRadius.minimumMeters)...sqrt(SearchRadius.maximumMeters))
+            }
+            Toggle("Metric units (km)", isOn: $settings.useMetric)
+            Toggle("Prefer my location inside a searched city", isOn: $settings.preferGPSInsideCity)
+            NavigationLink("How the niche score works") { ScoringExplainerView() }
+        }
+    }
+
+    private var radiusBinding: Binding<Double> {
+        Binding(get: { sqrt(settings.defaultRadiusMeters) },
+                set: { settings.defaultRadiusMeters = ($0 * $0).rounded() })
+    }
+}
+
+private struct SourceSettingsSection: View {
+    @Environment(AppSettings.self) private var settings
     @State private var hasYouTubeKey = KeychainStore.youTubeAPIKey?.isEmpty == false
     @State private var hasMapillaryToken = KeychainStore.mapillaryToken?.isEmpty == false
 
     var body: some View {
         @Bindable var settings = settings
-        NavigationStack {
-            Form {
-                Section("Discovery") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Default radius")
-                            Spacer()
-                            Text(Format.radius(settings.defaultRadiusMeters, metric: settings.useMetric))
-                                .monospacedDigit().foregroundStyle(Theme.textSecondary)
-                        }
-                        Slider(value: Binding(get: { sqrt(settings.defaultRadiusMeters) },
-                                              set: { settings.defaultRadiusMeters = ($0 * $0).rounded() }),
-                               in: sqrt(SearchRadius.minimumMeters)...sqrt(SearchRadius.maximumMeters))
-                    }
-                    Toggle("Metric units (km)", isOn: $settings.useMetric)
-                    Toggle("Prefer my location inside a searched city", isOn: $settings.preferGPSInsideCity)
-                    NavigationLink("How the niche score works") { ScoringExplainerView() }
-                }
+        Section {
+            Toggle("OpenStreetMap (always on)", isOn: .constant(true)).disabled(true)
+            Toggle("Wikidata & Wikipedia", isOn: $settings.wikidataEnabled)
+            Toggle("Apple Maps search", isOn: $settings.appleMapsEnabled)
+            Toggle("Venue websites (events)", isOn: $settings.venueEventsEnabled)
+            Toggle("Photos from venue websites", isOn: $settings.websitePhotosEnabled)
+            Toggle("Nearby photos (Wikimedia Commons)", isOn: $settings.nearbyPhotosEnabled)
+            Toggle("Street-level photos (Panoramax)", isOn: $settings.streetLevelPhotosEnabled)
+            Toggle("Look Around street imagery", isOn: $settings.lookAroundEnabled)
+            NavigationLink {
+                MapillaryKeyView(hasToken: $hasMapillaryToken)
+            } label: {
+                OptionalKeyRow(title: "Mapillary street photos", isSet: hasMapillaryToken, setText: "Token added")
+            }
+            NavigationLink {
+                YouTubeKeyView(hasKey: $hasYouTubeKey)
+            } label: {
+                OptionalKeyRow(title: "YouTube videos", isSet: hasYouTubeKey, setText: "Key added")
+            }
+            NavigationLink("Data sources & limitations") { DataSourcesView() }
+        } header: {
+            Text("Data sources")
+        } footer: {
+            Text("All sources are free. TikTok, Instagram, Pinterest and Reddit offer no API this app can use, so profiles link to their own search instead.")
+        }
+    }
+}
 
-                Section {
-                    Toggle("OpenStreetMap (always on)", isOn: .constant(true)).disabled(true)
-                    Toggle("Wikidata & Wikipedia", isOn: $settings.wikidataEnabled)
-                    Toggle("Apple Maps search", isOn: $settings.appleMapsEnabled)
-                    Toggle("Venue websites (events)", isOn: $settings.venueEventsEnabled)
-                    Toggle("Photos from venue websites", isOn: $settings.websitePhotosEnabled)
-                    Toggle("Nearby photos (Wikimedia Commons)", isOn: $settings.nearbyPhotosEnabled)
-                    Toggle("Street-level photos (Panoramax)", isOn: $settings.streetLevelPhotosEnabled)
-                    Toggle("Look Around street imagery", isOn: $settings.lookAroundEnabled)
-                    NavigationLink {
-                        MapillaryKeyView(hasToken: $hasMapillaryToken)
-                    } label: {
-                        HStack {
-                            Text("Mapillary street photos")
-                            Spacer()
-                            Text(hasMapillaryToken ? "Token added" : "Optional").foregroundStyle(Theme.textSecondary)
-                        }
-                    }
-                    NavigationLink {
-                        YouTubeKeyView(hasKey: $hasYouTubeKey)
-                    } label: {
-                        HStack {
-                            Text("YouTube videos")
-                            Spacer()
-                            Text(hasYouTubeKey ? "Key added" : "Optional").foregroundStyle(Theme.textSecondary)
-                        }
-                    }
-                    NavigationLink("Data sources & limitations") { DataSourcesView() }
-                } header: {
-                    Text("Data sources")
-                } footer: {
-                    Text("All sources are free. TikTok, Instagram, Pinterest and Reddit offer no API this app can use, so profiles link to their own search instead.")
-                }
+private struct OptionalKeyRow: View {
+    let title: String
+    let isSet: Bool
+    let setText: String
 
-                Section {
-                    Toggle("Background cache refresh", isOn: $settings.backgroundRefreshEnabled)
-                    HStack {
-                        Text("Temporary cache")
-                        Spacer()
-                        Text(cacheSize.map(Format.bytes) ?? "…").foregroundStyle(Theme.textSecondary)
-                    }
-                    Button("Clear cache") {
-                        Task {
-                            await model.clearCache()
-                            cacheSize = await AppEnvironment.cache.diskSize()
-                        }
-                    }
-                    Button("Clear search history", role: .destructive) { confirmClearHistory = true }
-                } header: {
-                    Text("Storage")
-                } footer: {
-                    Text("Results are cached for 24 hours to avoid repeat requests; iOS may clear the cache at any time. Background refresh re-fetches your last area when iOS allows it — no exact schedule is guaranteed and location is never used in the background.")
-                }
+    var body: some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(isSet ? setText : "Optional").foregroundStyle(Theme.textSecondary)
+        }
+    }
+}
 
-                Section {
-                    NavigationLink("Privacy & network") { PrivacyView() }
-                    NavigationLink("Attribution & licences") { AttributionView() }
-                    Toggle("Demo mode (sample data)", isOn: $settings.demoMode)
-                } header: {
-                    Text("About")
-                } footer: {
-                    Text("Demo mode shows clearly-labelled fictional places for trying the interface. It never mixes with real results.")
-                }
+private struct StorageSettingsSection: View {
+    @Environment(AppModel.self) private var model
+    @Environment(AppSettings.self) private var settings
+    @State private var cacheSize: Int?
+    @State private var confirmClearHistory = false
 
-                Section {
-                    HStack {
-                        Text("Version")
-                        Spacer()
-                        Text(appVersion).foregroundStyle(Theme.textSecondary)
-                    }
+    var body: some View {
+        @Bindable var settings = settings
+        Section {
+            Toggle("Background cache refresh", isOn: $settings.backgroundRefreshEnabled)
+            HStack {
+                Text("Temporary cache")
+                Spacer()
+                Text(cacheText).foregroundStyle(Theme.textSecondary)
+            }
+            Button("Clear cache") {
+                Task {
+                    await model.clearCache()
+                    cacheSize = await AppEnvironment.cache.diskSize()
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(Theme.background)
-            .navigationTitle("Settings")
-            .task { cacheSize = await AppEnvironment.cache.diskSize() }
-            .onChange(of: settings.appleMapsEnabled) { _, _ in model.sourcesChanged() }
-            .onChange(of: settings.wikidataEnabled) { _, _ in model.sourcesChanged() }
-            .onChange(of: settings.venueEventsEnabled) { _, _ in model.sourcesChanged() }
-            .onChange(of: settings.demoMode) { _, _ in Task { await model.demoModeChanged() } }
-            .onChange(of: settings.backgroundRefreshEnabled) { _, enabled in
-                if enabled { BackgroundRefresh.schedule() } else { BackgroundRefresh.cancel() }
-            }
-            .confirmationDialog("Clear all search history?", isPresented: $confirmClearHistory, titleVisibility: .visible) {
-                Button("Clear history", role: .destructive) { Task { await model.clearHistory() } }
+            Button("Clear search history", role: .destructive) { confirmClearHistory = true }
+                .confirmationDialog("Clear all search history?", isPresented: $confirmClearHistory, titleVisibility: .visible) {
+                    Button("Clear history", role: .destructive) { Task { await model.clearHistory() } }
+                }
+        } header: {
+            Text("Storage")
+        } footer: {
+            Text("Results are cached for 24 hours to avoid repeat requests; iOS may clear the cache at any time. Background refresh re-fetches your last area when iOS allows it — no exact schedule is guaranteed and location is never used in the background.")
+        }
+        .task { cacheSize = await AppEnvironment.cache.diskSize() }
+    }
+
+    private var cacheText: String {
+        guard let cacheSize else { return "…" }
+        return Format.bytes(cacheSize)
+    }
+}
+
+private struct AboutSettingsSection: View {
+    @Environment(AppSettings.self) private var settings
+
+    var body: some View {
+        @Bindable var settings = settings
+        Section {
+            NavigationLink("Privacy & network") { PrivacyView() }
+            NavigationLink("Attribution & licences") { AttributionView() }
+            Toggle("Demo mode (sample data)", isOn: $settings.demoMode)
+        } header: {
+            Text("About")
+        } footer: {
+            Text("Demo mode shows clearly-labelled fictional places for trying the interface. It never mixes with real results.")
+        }
+        Section {
+            HStack {
+                Text("Version")
+                Spacer()
+                Text(appVersion).foregroundStyle(Theme.textSecondary)
             }
         }
     }
