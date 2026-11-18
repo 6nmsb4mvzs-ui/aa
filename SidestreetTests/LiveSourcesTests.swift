@@ -116,6 +116,34 @@ final class LiveSourcesTests: XCTestCase {
         }
     }
 
+    /// Diagnostic: query each Overpass endpoint directly and report timing.
+    func testOverpassEndpointsDirect() async throws {
+        try XCTSkipIf(skipOverpass)
+        let client = makeClient()
+        let area = SearchArea(center: Self.cities[0].center, radiusMeters: 2_000, label: "Berlin", subtitle: nil,
+                              centerSource: .city, timeZoneIdentifier: "Europe/Berlin", countryCode: nil)
+        var anySucceeded = false
+        for endpoint in OverpassProvider.defaultEndpoints {
+            for kind in [OverpassQueryBuilder.Kind.niche, .everyday] {
+                let started = Date()
+                let provider = OverpassProvider(client: client, endpoints: [endpoint])
+                do {
+                    let response = try await provider.run(query: OverpassQueryBuilder.query(kind, area: area))
+                    let places = OverpassProvider.places(from: response, area: area, now: Date())
+                    anySucceeded = true
+                    print(String(format: "overpass %@ %@: %.1fs, %d elements → %d places, remark: %@",
+                                 endpoint.host ?? "?", kind.rawValue, Date().timeIntervalSince(started),
+                                 response.elements.count, places.count, response.remark ?? "-"))
+                } catch {
+                    print(String(format: "overpass %@ %@: FAILED after %.1fs: %@", endpoint.host ?? "?", kind.rawValue,
+                                 Date().timeIntervalSince(started), String(describing: error)))
+                }
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
+        XCTAssertTrue(anySucceeded, "no Overpass endpoint answered")
+    }
+
     func testCommonsThumbnailsResolve() async throws {
         let client = makeClient()
         for file in ["Tresor - Berlin.jpg", "Berlin-kreuzberg anhalter-steg 20061018 219.jpg"] {

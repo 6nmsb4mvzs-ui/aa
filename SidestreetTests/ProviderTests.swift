@@ -89,8 +89,8 @@ final class OverpassParsingTests: XCTestCase {
     func testQueryContainsRadiusAndCentre() {
         let area = Fixture.area(radius: 3_000)
         let niche = OverpassQueryBuilder.query(.niche, area: area)
-        XCTAssertTrue(niche.contains("(around:3000,52.499000,13.415500)"))
-        XCTAssertTrue(niche.contains("[out:json]"))
+        XCTAssertTrue(niche.hasPrefix("[out:json][timeout:25][bbox:52.472"), niche.prefix(80).description)
+        XCTAssertFalse(niche.contains("around:"), "global bbox is used instead of slow per-statement around filters")
         XCTAssertTrue(niche.contains("leisure\"=\"skatepark"))
         let everyday = OverpassQueryBuilder.query(.everyday, area: area)
         XCTAssertTrue(everyday.contains("[!\"brand\"]"), "chains are filtered server-side for dense categories")
