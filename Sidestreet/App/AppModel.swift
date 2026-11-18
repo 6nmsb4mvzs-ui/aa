@@ -43,6 +43,8 @@ final class AppModel {
     private(set) var visibleCount = 20
     private(set) var filter: CategoryFilter
     private(set) var historyEntries: [SearchHistoryEntry] = []
+    /// Clusters of independent shops / street art / nightlife in the current results.
+    private(set) var hotspots: [Hotspot] = []
 
     /// The entry whose preview/profile sheet is open (feed or map).
     var selectedEntry: FeedEntry?
@@ -82,6 +84,10 @@ final class AppModel {
     var timeZone: TimeZone { area?.timeZone ?? .current }
 
     var placeCount: Int { snapshot?.places.count ?? 0 }
+
+    func place(withID id: String) -> Place? {
+        snapshot?.places.first { $0.id == id }
+    }
     var eventCount: Int { snapshot?.events.count ?? 0 }
 
     struct SourceFailure: Identifiable, Hashable {
@@ -378,15 +384,20 @@ final class AppModel {
         rankTask?.cancel()
         guard let snapshot, let area else {
             feed = []
+            hotspots = []
             return
         }
         let filter = self.filter
         rankTask = Task { [weak self] in
-            let ranked = await Task.detached(priority: .userInitiated) {
-                FeedRanker().rank(places: snapshot.places, events: snapshot.events, area: area, filter: filter, now: Date())
+            let (ranked, hotspots) = await Task.detached(priority: .userInitiated) {
+                let ranked = FeedRanker().rank(places: snapshot.places, events: snapshot.events, area: area, filter: filter, now: Date())
+                let visible = snapshot.places.filter { filter.matches($0) && area.contains($0.coordinate) }
+                let themes = Hotspot.Theme.allCases.filter { filter.isShowingAll || filter.selected.contains($0.category) }
+                return (ranked, HotspotDetector.detect(places: visible, themes: themes, limit: 3))
             }.value
             guard !Task.isCancelled, let self else { return }
             self.feed = ranked
+            self.hotspots = hotspots
             if self.visibleCount > ranked.count { self.visibleCount = max(Self.pageSize, min(self.visibleCount, ranked.count)) }
         }
     }

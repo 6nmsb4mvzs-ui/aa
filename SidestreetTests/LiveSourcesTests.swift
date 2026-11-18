@@ -97,6 +97,9 @@ final class LiveSourcesTests: XCTestCase {
             if let worstChainRank = chains.compactMap({ chain in feed.firstIndex { $0.id == "p:" + chain.id } }).min() {
                 print("  best-ranked chain store position: \(worstChainRank + 1) of \(feed.count)")
             }
+            for hotspot in HotspotDetector.detect(places: snapshot.places) {
+                print("  hotspot: \(hotspot.theme.label) — \(hotspot.title) (\(hotspot.count)) \(hotspot.styles.joined(separator: ", "))")
+            }
             for event in snapshot.events.prefix(10) {
                 print("  event: \(event.title) | \(event.start) | \(event.kind.label) | \(event.source.provider.rawValue) | \(event.venueName ?? "-")")
             }

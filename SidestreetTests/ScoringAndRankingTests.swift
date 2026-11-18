@@ -324,3 +324,38 @@ final class FeedRankerTests: XCTestCase {
         XCTAssertEqual(a.map(\.id), b.map(\.id))
     }
 }
+
+final class HotspotDetectorTests: XCTestCase {
+    func street(_ name: String) -> PostalAddress {
+        PostalAddress(street: name, houseNumber: nil, postcode: nil, city: nil, district: nil, country: nil, formatted: nil)
+    }
+
+    func testDetectsShoppingDistrictAndNamesItByStreet() {
+        var places: [Place] = []
+        for i in 0..<5 {
+            var p = Fixture.place(id: "f\(i)", name: "Vintage \(i)", kind: i % 2 == 0 ? .vintageStore : .thriftStore,
+                                  at: Fixture.offset(east: Double(i) * 40))
+            p.address = street("Oranienstraße")
+            p.descriptors = ["vintage", "second-hand"]
+            places.append(p)
+        }
+        // A chain store and a far-away shop are not part of the district.
+        places.append(Fixture.place(id: "chain", name: "H&M", kind: .fashionChain, at: Fixture.offset(east: 60),
+                                    brand: BrandInfo(name: "H&M", wikidataID: "Q188326")))
+        places.append(Fixture.place(id: "far", name: "Far Vintage", kind: .vintageStore, at: Fixture.offset(north: 1_500)))
+        let hotspots = HotspotDetector.detect(places: places)
+        XCTAssertEqual(hotspots.count, 1)
+        XCTAssertEqual(hotspots[0].theme, .fashion)
+        XCTAssertEqual(hotspots[0].title, "Oranienstraße")
+        XCTAssertEqual(hotspots[0].count, 5)
+        XCTAssertEqual(Set(hotspots[0].styles), ["vintage", "second-hand"])
+        XCTAssertFalse(hotspots[0].memberIDs.contains("chain"))
+    }
+
+    func testScatteredPlacesFormNoHotspot() {
+        let places = (0..<6).map { i in
+            Fixture.place(id: "m\(i)", name: "Mural \(i)", kind: .mural, at: Fixture.offset(north: Double(i) * 600))
+        }
+        XCTAssertTrue(HotspotDetector.detect(places: places).isEmpty)
+    }
+}

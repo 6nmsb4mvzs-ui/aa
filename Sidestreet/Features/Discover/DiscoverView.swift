@@ -91,6 +91,11 @@ struct DiscoverView: View {
                     .padding(.horizontal, Theme.gutter)
                     .padding(.bottom, 18)
                     .onAppear { model.entryAppeared(entry) }
+                if index == min(3, model.feed.count - 1), !model.hotspots.isEmpty {
+                    HotspotsCard()
+                        .padding(.horizontal, Theme.gutter)
+                        .padding(.bottom, 18)
+                }
                 if index == min(7, model.feed.count - 1) {
                     CityExploreCard()
                         .padding(.horizontal, Theme.gutter)
