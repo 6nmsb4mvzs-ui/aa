@@ -43,16 +43,21 @@ jobs:
   ios:
     name: iOS app build + tests (Xcode)
     runs-on: macos-latest
-    if: hashFiles('Sidestreet.xcodeproj/project.pbxproj') != ''
     steps:
       - uses: actions/checkout@v4
+      - name: Check for Xcode project
+        id: check
+        run: |
+          if [ -f Sidestreet.xcodeproj/project.pbxproj ]; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
       - name: Select newest Xcode
+        if: steps.check.outputs.exists == 'true'
         run: |
           ls -d /Applications/Xcode*.app || true
           XCODE=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
           if [ -n "$XCODE" ]; then sudo xcode-select -s "$XCODE"; fi
           xcodebuild -version
       - name: Pick an iPhone simulator
+        if: steps.check.outputs.exists == 'true'
         id: sim
         run: |
           UDID=$(xcrun simctl list devices available -j | python3 -c "
@@ -70,6 +75,7 @@ jobs:
           ")
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
       - name: Build app (no signing)
+        if: steps.check.outputs.exists == 'true'
         run: |
           set -o pipefail
           xcodebuild -project Sidestreet.xcodeproj -scheme Sidestreet \
@@ -77,6 +83,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO build | tee build.log | grep -E "error:|warning:|BUILD" || true
           grep -q "BUILD SUCCEEDED" build.log
       - name: Run unit tests on simulator
+        if: steps.check.outputs.exists == 'true'
         run: |
           set -o pipefail
           xcodebuild -project Sidestreet.xcodeproj -scheme Sidestreet \
@@ -84,7 +91,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO test | tee test.log | grep -E "error:|Test Case.*failed|Executed|TEST" || true
           grep -q "TEST SUCCEEDED" test.log
       - name: Upload logs
-        if: always()
+        if: always() && steps.check.outputs.exists == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: xcode-logs
