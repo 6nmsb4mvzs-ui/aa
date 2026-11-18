@@ -123,8 +123,9 @@ final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
             self.session = session
         } else {
             let config = URLSessionConfiguration.default
-            config.timeoutIntervalForRequest = 30
-            config.timeoutIntervalForResource = 60
+            // Upper bounds only; each HTTPRequest sets its own (shorter) timeout.
+            config.timeoutIntervalForRequest = 70
+            config.timeoutIntervalForResource = 120
             config.httpMaximumConnectionsPerHost = 4
             config.requestCachePolicy = .useProtocolCachePolicy
             config.httpCookieAcceptPolicy = .never

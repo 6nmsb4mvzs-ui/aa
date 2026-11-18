@@ -465,6 +465,11 @@ final class AppModel {
         URLCache.shared.removeAllCachedResponses()
     }
 
+    /// Fills the model with sample data (SwiftUI previews only).
+    func loadPreviewData() {
+        loadDemo()
+    }
+
     private func loadDemo() {
         let center = selectedCity?.center ?? location.lastFix?.coordinate ?? SampleData.center
         let demo = SampleData.snapshot(around: center, radius: radiusMeters)
