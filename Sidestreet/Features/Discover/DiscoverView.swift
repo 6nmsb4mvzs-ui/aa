@@ -86,21 +86,8 @@ struct DiscoverView: View {
             StatusLine()
                 .padding(.horizontal, Theme.gutter)
                 .padding(.bottom, 12)
-            ForEach(Array(model.visibleFeed.enumerated()), id: \.element.id) { index, entry in
-                FeedRow(entry: entry)
-                    .padding(.horizontal, Theme.gutter)
-                    .padding(.bottom, 18)
-                    .onAppear { model.entryAppeared(entry) }
-                if index == min(3, model.feed.count - 1), !model.hotspots.isEmpty {
-                    HotspotsCard()
-                        .padding(.horizontal, Theme.gutter)
-                        .padding(.bottom, 18)
-                }
-                if index == min(7, model.feed.count - 1) {
-                    CityExploreCard()
-                        .padding(.horizontal, Theme.gutter)
-                        .padding(.bottom, 18)
-                }
+            ForEach(Array(model.visibleFeed.enumerated()), id: \.element.id) { item in
+                FeedItem(index: item.offset, entry: item.element)
             }
             FeedTail()
                 .padding(.horizontal, Theme.gutter)
@@ -140,6 +127,33 @@ struct DiscoverView: View {
             }
         }
         return .feed
+    }
+}
+
+/// A feed position: the card plus any interstitial card that follows it.
+/// Kept as its own view so the feed's ViewBuilder stays cheap to type-check.
+struct FeedItem: View {
+    @Environment(AppModel.self) private var model
+    let index: Int
+    let entry: FeedEntry
+
+    private var lastIndex: Int { max(0, model.feed.count - 1) }
+    private var showsHotspots: Bool { index == min(3, lastIndex) && !model.hotspots.isEmpty }
+    private var showsCityCard: Bool { index == min(7, lastIndex) }
+
+    var body: some View {
+        VStack(spacing: 18) {
+            FeedRow(entry: entry)
+                .onAppear { model.entryAppeared(entry) }
+            if showsHotspots {
+                HotspotsCard()
+            }
+            if showsCityCard {
+                CityExploreCard()
+            }
+        }
+        .padding(.horizontal, Theme.gutter)
+        .padding(.bottom, 18)
     }
 }
 

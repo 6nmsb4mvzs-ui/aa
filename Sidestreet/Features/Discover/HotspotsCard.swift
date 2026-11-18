@@ -27,28 +27,8 @@ struct HotspotsCard: View {
                     }
                     .buttonStyle(.plain)
                     if expanded == hotspot.id {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(hotspot.memberIDs, id: \.self) { id in
-                                if let place = model.place(withID: id) {
-                                    Button {
-                                        model.selectedEntry = .place(place)
-                                    } label: {
-                                        HStack(spacing: 10) {
-                                            Image(systemName: place.kind.symbolName)
-                                                .font(.system(size: 12, weight: .semibold))
-                                                .foregroundStyle(Theme.tint(for: place.primaryCategory))
-                                                .frame(width: 18)
-                                            Text(place.name).font(.system(size: 14, weight: .medium)).foregroundStyle(Theme.textPrimary)
-                                                .lineLimit(1)
-                                            Spacer()
-                                            Text(place.kind.label).font(.system(size: 11)).foregroundStyle(Theme.textTertiary)
-                                        }
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        .padding(.leading, 40)
+                        HotspotMembers(memberIDs: hotspot.memberIDs)
+                            .padding(.leading, 40)
                     }
                 }
                 if hotspot.id != model.hotspots.last?.id {
@@ -90,5 +70,47 @@ struct HotspotsCard: View {
             text += " · " + Format.distance(GeoMath.distance(hotspot.center, area.center), metric: settings.useMetric) + " away"
         }
         return text
+    }
+}
+
+/// The places that make up a hotspot; tapping one opens its preview.
+private struct HotspotMembers: View {
+    @Environment(AppModel.self) private var model
+    let memberIDs: [String]
+
+    private var places: [Place] { memberIDs.compactMap { model.place(withID: $0) } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(places) { place in
+                Button {
+                    model.selectedEntry = .place(place)
+                } label: {
+                    HotspotMemberRow(place: place)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+private struct HotspotMemberRow: View {
+    let place: Place
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: place.kind.symbolName)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.tint(for: place.primaryCategory))
+                .frame(width: 18)
+            Text(place.name)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+            Spacer()
+            Text(place.kind.label)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textTertiary)
+        }
     }
 }
