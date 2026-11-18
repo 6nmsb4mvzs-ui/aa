@@ -133,7 +133,6 @@ struct PlaceProfileView: View {
         videosSection
     }
 
-    @ViewBuilder
     /// Linked photos, then the found photo, then nearby photos (no duplicates).
     private var allPhotos: [PlaceImage] {
         var result: [PlaceImage] = place.images
@@ -146,6 +145,7 @@ struct PlaceProfileView: View {
         return result
     }
 
+    @ViewBuilder
     private var photosSection: some View {
         let all: [PlaceImage] = allPhotos
         ProfileSection(title: "Photos & visual references") {
