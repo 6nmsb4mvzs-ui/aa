@@ -113,6 +113,7 @@ final class JSONLDEventTests: XCTestCase {
         shop.openingHoursRaw = "Sa 10:00-16:00"
         let events = RecurringMarketEvents.events(from: [market, daily, unparseable, shop], area: Fixture.area(), now: now)
         XCTAssertEqual(Set(events.map(\.venuePlaceID)), ["m"], "only weekly-ish markets with parseable schedules")
+        XCTAssertEqual(events.count, 1, "one card per market: the next date")
         XCTAssertEqual(events.first?.start, Fixture.date("2026-11-21 10:00"))
         XCTAssertEqual(events.first?.recurrence?.rule, "Sa 10:00-16:00")
         XCTAssertEqual(events.first?.confidence, .partial, "no recent survey date → partially verified")

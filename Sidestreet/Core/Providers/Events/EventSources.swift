@@ -152,7 +152,8 @@ enum RecurringMarketEvents {
             let intervals = hours.upcomingIntervals(from: now, timeZone: area.timeZone, days: days)
             guard !intervals.isEmpty, intervals.count <= 10 else { continue }
             let recent = place.signals.lastConfirmed.map { now.timeIntervalSince($0) < 2 * 365 * 24 * 3600 } ?? false
-            for interval in intervals.prefix(2) {
+            // Only the next date per market (the profile shows the full schedule).
+            for interval in intervals.prefix(1) {
                 let identifier = place.id + "@" + String(Int(interval.start.timeIntervalSince1970))
                 events.append(DiscoveryEvent(
                     id: "osm-recurring:" + MD5.hex(identifier),
