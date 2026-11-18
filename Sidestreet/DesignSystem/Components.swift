@@ -19,24 +19,6 @@ struct Tag: View {
     }
 }
 
-/// Niche score badge (0–100).
-struct ScoreBadge: View {
-    var score: Int
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Text("\(score)").font(.system(size: 17, weight: .heavy).monospacedDigit())
-            Text("NICHE").font(.system(size: 7, weight: .bold).width(.expanded)).tracking(1)
-        }
-        .foregroundStyle(Theme.textPrimary)
-        .frame(width: 46, height: 46)
-        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.accent.opacity(0.6), lineWidth: 1))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Niche score \(score) out of 100")
-    }
-}
-
 /// Confidence indicator.
 struct ConfidenceBadge: View {
     var level: ConfidenceLevel

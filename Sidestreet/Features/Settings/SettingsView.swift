@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var cacheSize: Int?
     @State private var confirmClearHistory = false
     @State private var hasYouTubeKey = KeychainStore.youTubeAPIKey?.isEmpty == false
+    @State private var hasMapillaryToken = KeychainStore.mapillaryToken?.isEmpty == false
 
     var body: some View {
         @Bindable var settings = settings
@@ -24,7 +25,6 @@ struct SettingsView: View {
                                in: sqrt(SearchRadius.minimumMeters)...sqrt(SearchRadius.maximumMeters))
                     }
                     Toggle("Metric units (km)", isOn: $settings.useMetric)
-                    Toggle("Show niche score on cards", isOn: $settings.showNicheScore)
                     Toggle("Prefer my location inside a searched city", isOn: $settings.preferGPSInsideCity)
                     NavigationLink("How the niche score works") { ScoringExplainerView() }
                 }
@@ -34,8 +34,19 @@ struct SettingsView: View {
                     Toggle("Wikidata & Wikipedia", isOn: $settings.wikidataEnabled)
                     Toggle("Apple Maps search", isOn: $settings.appleMapsEnabled)
                     Toggle("Venue websites (events)", isOn: $settings.venueEventsEnabled)
+                    Toggle("Photos from venue websites", isOn: $settings.websitePhotosEnabled)
                     Toggle("Nearby photos (Wikimedia Commons)", isOn: $settings.nearbyPhotosEnabled)
+                    Toggle("Street-level photos (Panoramax)", isOn: $settings.streetLevelPhotosEnabled)
                     Toggle("Look Around street imagery", isOn: $settings.lookAroundEnabled)
+                    NavigationLink {
+                        MapillaryKeyView(hasToken: $hasMapillaryToken)
+                    } label: {
+                        HStack {
+                            Text("Mapillary street photos")
+                            Spacer()
+                            Text(hasMapillaryToken ? "Token added" : "Optional").foregroundStyle(Theme.textSecondary)
+                        }
+                    }
                     NavigationLink {
                         YouTubeKeyView(hasKey: $hasYouTubeKey)
                     } label: {
@@ -161,5 +172,53 @@ struct YouTubeKeyView: View {
         .scrollContentBackground(.hidden)
         .background(Theme.background)
         .navigationTitle("YouTube")
+    }
+}
+
+/// Optional Mapillary access token for street-level photos (Keychain).
+struct MapillaryKeyView: View {
+    @Binding var hasToken: Bool
+    @State private var token = ""
+    @State private var saved = false
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Form {
+            Section {
+                SecureField("Paste your client token (MLY|…)", text: $token)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Save token") {
+                    KeychainStore.mapillaryToken = token
+                    hasToken = !token.trimmingCharacters(in: .whitespaces).isEmpty
+                    saved = true
+                    token = ""
+                    Task { await AppEnvironment.photoFinder.clear() }
+                }
+                .disabled(token.trimmingCharacters(in: .whitespaces).isEmpty)
+                if hasToken {
+                    Button("Remove token", role: .destructive) {
+                        KeychainStore.mapillaryToken = nil
+                        hasToken = false
+                    }
+                }
+                if saved { Text("Saved in the iPhone Keychain.").foregroundStyle(Theme.positive) }
+            } footer: {
+                Text("Mapillary has street-level photos of most streets in Europe and North America. With a token, places without a photo get the street view facing them. Photos © Mapillary contributors, CC BY-SA 4.0.")
+            }
+            Section("Get a free token (about 3 minutes)") {
+                Text("1. Open mapillary.com/dashboard/developers and sign in (free Mapillary account).")
+                Text("2. Register an application (any name and description, e.g. “Sidestreet personal”).")
+                Text("3. Tick “Read” access, save, then copy the “Client Token” (starts with MLY|).")
+                Text("4. Paste it above.")
+                Button("Open Mapillary developer dashboard") {
+                    if let url = URL(string: "https://www.mapillary.com/dashboard/developers") { openURL(url) }
+                }
+            }
+            .font(.system(size: 14))
+        }
+        .scrollContentBackground(.hidden)
+        .background(Theme.background)
+        .navigationTitle("Mapillary")
     }
 }

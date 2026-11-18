@@ -8,7 +8,8 @@ final class AppSettings {
     private enum Key {
         static let defaultRadius = "settings.defaultRadius"
         static let useMetric = "settings.useMetric"
-        static let showNicheScore = "settings.showNicheScore"
+        static let websitePhotos = "settings.photos.website"
+        static let streetLevelPhotos = "settings.photos.streetLevel"
         static let appleMaps = "settings.source.appleMaps"
         static let wikidata = "settings.source.wikidata"
         static let venueEvents = "settings.source.venueEvents"
@@ -46,12 +47,21 @@ final class AppSettings {
         }
     }
 
-    @ObservationIgnored private var _showNicheScore: Bool
-    var showNicheScore: Bool {
-        get { access(keyPath: \.showNicheScore); return _showNicheScore }
+    @ObservationIgnored private var _websitePhotosEnabled: Bool
+    var websitePhotosEnabled: Bool {
+        get { access(keyPath: \.websitePhotosEnabled); return _websitePhotosEnabled }
         set {
-            withMutation(keyPath: \.showNicheScore) { _showNicheScore = newValue }
-            defaults.set(newValue, forKey: Key.showNicheScore)
+            withMutation(keyPath: \.websitePhotosEnabled) { _websitePhotosEnabled = newValue }
+            defaults.set(newValue, forKey: Key.websitePhotos)
+        }
+    }
+
+    @ObservationIgnored private var _streetLevelPhotosEnabled: Bool
+    var streetLevelPhotosEnabled: Bool {
+        get { access(keyPath: \.streetLevelPhotosEnabled); return _streetLevelPhotosEnabled }
+        set {
+            withMutation(keyPath: \.streetLevelPhotosEnabled) { _streetLevelPhotosEnabled = newValue }
+            defaults.set(newValue, forKey: Key.streetLevelPhotos)
         }
     }
 
@@ -142,7 +152,8 @@ final class AppSettings {
         defaults.register(defaults: [
             Key.defaultRadius: SearchRadius.defaultMeters,
             Key.useMetric: Locale.current.measurementSystem != .us,
-            Key.showNicheScore: true,
+            Key.websitePhotos: true,
+            Key.streetLevelPhotos: true,
             Key.appleMaps: true,
             Key.wikidata: true,
             Key.venueEvents: true,
@@ -155,7 +166,8 @@ final class AppSettings {
         ])
         _defaultRadiusMeters = GeoMath.clampRadius(defaults.double(forKey: Key.defaultRadius))
         _useMetric = defaults.bool(forKey: Key.useMetric)
-        _showNicheScore = defaults.bool(forKey: Key.showNicheScore)
+        _websitePhotosEnabled = defaults.bool(forKey: Key.websitePhotos)
+        _streetLevelPhotosEnabled = defaults.bool(forKey: Key.streetLevelPhotos)
         _appleMapsEnabled = defaults.bool(forKey: Key.appleMaps)
         _wikidataEnabled = defaults.bool(forKey: Key.wikidata)
         _venueEventsEnabled = defaults.bool(forKey: Key.venueEvents)

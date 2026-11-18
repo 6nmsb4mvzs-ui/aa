@@ -6,32 +6,53 @@ import MapKit
 /// Adds independent businesses that OpenStreetMap may be missing and
 /// cross-confirms OSM records (raising their confidence). Apple throttles
 /// apps that search too often, so a single run issues a small, fixed set of
-/// queries sequentially. Places returned for a *generic* query ("coffee")
-/// are flagged as prominent in mainstream search, which lowers obscurity.
+/// queries, three at a time. Every result must show evidence (category or
+/// tell-tale name words) for the kind it would be labelled as. Places
+/// returned for the generic "coffee" query are flagged as prominent in
+/// mainstream search, which lowers obscurity.
 struct AppleMapsProvider: PlaceSearchProvider {
     struct Query: Sendable {
         var text: String
         var kind: PlaceKind
         var isGeneric: Bool
-        /// Apple POI categories accepted for this query (nil = any).
-        var allowed: Set<String>?
+        /// What a result must show to be accepted as `kind`.
+        var evidence: SearchEvidence
     }
 
     var provider: SourceProvider { .appleMaps }
 
+    private static let cafe = "MKPOICategoryCafe", bakery = "MKPOICategoryBakery", store = "MKPOICategoryStore",
+                       museum = "MKPOICategoryMuseum", restaurant = "MKPOICategoryRestaurant", nightlife = "MKPOICategoryNightlife",
+                       brewery = "MKPOICategoryBrewery", winery = "MKPOICategoryWinery", musicVenue = "MKPOICategoryMusicVenue",
+                       theater = "MKPOICategoryTheater"
+
     static let queries: [Query] = [
-        Query(text: "coffee", kind: .cafe, isGeneric: true, allowed: ["MKPOICategoryCafe", "MKPOICategoryBakery"]),
-        Query(text: "thrift store", kind: .thriftStore, isGeneric: false, allowed: ["MKPOICategoryStore"]),
-        Query(text: "vintage clothing", kind: .vintageStore, isGeneric: false, allowed: ["MKPOICategoryStore"]),
-        Query(text: "skate shop", kind: .skateShop, isGeneric: false, allowed: ["MKPOICategoryStore"]),
-        Query(text: "record store", kind: .recordStore, isGeneric: false, allowed: ["MKPOICategoryStore"]),
-        Query(text: "flea market", kind: .fleaMarket, isGeneric: false, allowed: nil),
-        Query(text: "tattoo studio", kind: .tattooStudio, isGeneric: false, allowed: nil),
-        Query(text: "art gallery", kind: .gallery, isGeneric: false, allowed: ["MKPOICategoryMuseum", "MKPOICategoryStore"]),
-        Query(text: "specialty coffee roaster", kind: .coffeeRoaster, isGeneric: false, allowed: ["MKPOICategoryCafe", "MKPOICategoryStore"]),
-        Query(text: "vegan restaurant", kind: .veganRestaurant, isGeneric: false, allowed: ["MKPOICategoryRestaurant", "MKPOICategoryCafe", "MKPOICategoryFoodMarket"]),
-        Query(text: "comic store", kind: .comicStore, isGeneric: false, allowed: ["MKPOICategoryStore"]),
-        Query(text: "live music venue", kind: .musicVenue, isGeneric: false, allowed: ["MKPOICategoryNightlife", "MKPOICategoryTheater", "MKPOICategoryMusicVenue"]),
+        Query(text: "coffee", kind: .cafe, isGeneric: true,
+              evidence: SearchEvidence(mode: .category, categories: [cafe, bakery])),
+        Query(text: "bar", kind: .bar, isGeneric: false,
+              evidence: SearchEvidence(mode: .category, categories: [nightlife, brewery, winery])),
+        Query(text: "thrift store", kind: .thriftStore, isGeneric: false,
+              evidence: SearchEvidence(mode: .name, nameFragments: SearchEvidence.thrift)),
+        Query(text: "vintage clothing", kind: .vintageStore, isGeneric: false,
+              evidence: SearchEvidence(mode: .name, nameFragments: SearchEvidence.vintage)),
+        Query(text: "skate shop", kind: .skateShop, isGeneric: false,
+              evidence: SearchEvidence(mode: .name, nameFragments: SearchEvidence.skate)),
+        Query(text: "record store", kind: .recordStore, isGeneric: false,
+              evidence: SearchEvidence(mode: .name, nameFragments: SearchEvidence.records)),
+        Query(text: "flea market", kind: .fleaMarket, isGeneric: false,
+              evidence: SearchEvidence(mode: .name, nameFragments: SearchEvidence.flea)),
+        Query(text: "tattoo studio", kind: .tattooStudio, isGeneric: false,
+              evidence: SearchEvidence(mode: .name, nameFragments: SearchEvidence.tattoo)),
+        Query(text: "art gallery", kind: .gallery, isGeneric: false,
+              evidence: SearchEvidence(mode: .name, nameFragments: SearchEvidence.gallery)),
+        Query(text: "specialty coffee roaster", kind: .coffeeRoaster, isGeneric: false,
+              evidence: SearchEvidence(mode: .name, nameFragments: SearchEvidence.roaster)),
+        Query(text: "vegan restaurant", kind: .veganRestaurant, isGeneric: false,
+              evidence: SearchEvidence(mode: .name, nameFragments: SearchEvidence.vegan)),
+        Query(text: "comic store", kind: .comicStore, isGeneric: false,
+              evidence: SearchEvidence(mode: .name, nameFragments: SearchEvidence.comics)),
+        Query(text: "live music venue", kind: .musicVenue, isGeneric: false,
+              evidence: SearchEvidence(mode: .nameOrCategory, categories: [musicVenue], nameFragments: SearchEvidence.music)),
     ]
 
     func searchPlaces(in area: SearchArea, now: Date) async throws -> [Place] {
@@ -89,11 +110,11 @@ struct AppleMapsProvider: PlaceSearchProvider {
         let c = item.placemark.coordinate
         let coordinate = GeoCoordinate(latitude: c.latitude, longitude: c.longitude)
         guard coordinate.isValid, area.contains(coordinate) else { return nil }
-        if let allowed = query.allowed, let category = item.pointOfInterestCategory?.rawValue, !allowed.contains(category) {
-            return nil
-        }
+        // Fuzzy search results must show evidence for the kind they'd be labelled as.
+        guard query.evidence.accepts(name: name, category: item.pointOfInterestCategory?.rawValue) else { return nil }
         var kind = query.kind
         if query.kind == .cafe, name.lowercased().contains("roast") { kind = .coffeeRoaster }
+        if query.kind == .bar, item.pointOfInterestCategory == .brewery { kind = .brewery }
         // Re-use the OSM name heuristics for fashion results ("Vintage …", "Thrift …").
         if kind.primaryCategory == .fashion, let refined = OSMPlaceBuilder.classify(["shop": "clothes", "name": name]),
            refined != .clothingStore {

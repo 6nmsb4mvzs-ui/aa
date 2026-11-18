@@ -7,6 +7,9 @@ enum AppEnvironment {
 
     static let cache = DiscoveryCache(directory: DiscoveryCache.defaultDirectory())
 
+    /// Finds photos for places without one (website preview, Commons, street level).
+    static let photoFinder = PhotoFinder(client: httpClient(identity: .default), cacheFile: PhotoFinder.defaultCacheFile())
+
     static func httpClient(identity: ClientIdentity) -> URLSessionHTTPClient {
         URLSessionHTTPClient(identity: identity, limiter: rateLimiter)
     }

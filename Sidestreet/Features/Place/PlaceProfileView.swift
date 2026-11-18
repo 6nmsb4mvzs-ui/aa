@@ -12,6 +12,7 @@ struct PlaceProfileView: View {
 
     @State private var summary: WikipediaSummaryService.Summary?
     @State private var nearbyPhotos: [PlaceImage] = []
+    @State private var foundPhoto: PlaceImage?
     @State private var videos: PlaceDetailService.VideoResult?
     @State private var lookAroundScene: MKLookAroundScene?
     @State private var appleItem: MKMapItem?
@@ -67,9 +68,6 @@ struct PlaceProfileView: View {
                         .minimumScaleFactor(0.75)
                 }
                 Spacer()
-                if settings.showNicheScore, let score = place.score {
-                    ScoreBadge(score: score.display)
-                }
             }
             if place.isSample { SampleDataBanner() }
             MetaRow(place: place, area: area)
@@ -138,7 +136,7 @@ struct PlaceProfileView: View {
     @ViewBuilder
     private var photosSection: some View {
         let linked = place.images
-        let all = linked + nearbyPhotos
+        let all = linked + (foundPhoto.map { [$0] } ?? []) + nearbyPhotos.filter { $0.url != foundPhoto?.url }
         ProfileSection(title: "Photos & visual references") {
             if all.isEmpty && lookAroundScene == nil {
                 Text(didLoadDetails ? "No photos found in open image sources for this place." : "Looking for photos…")
@@ -153,8 +151,8 @@ struct PlaceProfileView: View {
                     }
                 }
                 .scrollIndicators(.hidden)
-                if !nearbyPhotos.isEmpty {
-                    Text("“Nearby” photos are geotagged within about 60 m and may show the surroundings.")
+                if !nearbyPhotos.isEmpty || foundPhoto?.origin == .streetLevel {
+                    Text("“Nearby” photos are geotagged within about 60 m; street-level views look towards the place. Both may show the surroundings.")
                         .font(.system(size: 11)).foregroundStyle(Theme.textTertiary)
                 }
             }
@@ -268,7 +266,7 @@ struct PlaceProfileView: View {
     @ViewBuilder
     private var scoreSection: some View {
         if let score = place.score {
-            ProfileSection(title: "Why it's here · niche \(score.display)") {
+            ProfileSection(title: "Why it's here") {
                 ForEach(score.components.sorted { $0.weight > $1.weight }) { component in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
@@ -360,6 +358,9 @@ struct PlaceProfileView: View {
         let photosEnabled = settings.nearbyPhotosEnabled
         async let summaryResult = details.wikipediaSummary(for: place)
         async let photosResult = details.nearbyPhotos(for: place, enabled: photosEnabled)
+        if place.primaryImage == nil {
+            foundPhoto = await AppEnvironment.photoFinder.photo(for: place, options: model.photoOptions)
+        }
         if settings.lookAroundEnabled {
             lookAroundScene = await LookAroundService.shared.scene(at: place.coordinate)
         }
@@ -438,6 +439,10 @@ struct PhotoTile: View {
             .overlay(alignment: .topLeading) {
                 if image.origin == .nearby {
                     Tag(text: "Nearby", color: Theme.textPrimary).padding(8)
+                } else if image.origin == .streetLevel {
+                    Tag(text: "Street view", color: Theme.textPrimary).padding(8)
+                } else if image.provider == .venueWebsite {
+                    Tag(text: "Website", color: Theme.textPrimary).padding(8)
                 }
             }
             Text([image.attribution, image.license].compactMap { $0 }.joined(separator: " · "))

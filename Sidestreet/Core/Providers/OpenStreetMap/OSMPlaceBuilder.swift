@@ -262,7 +262,6 @@ enum OSMPlaceBuilder {
 
         // Nature & public space
         if leisure == "garden", tags["garden:type"] == "community" { return .communityGarden }
-        if tags["highway"] == "steps" { return .staircase }
         if tags["natural"] == "water" {
             return tags["water"] == "pond" ? .pond : .lake
         }
@@ -379,6 +378,17 @@ enum OSMPlaceBuilder {
                                      provider: .wikimediaCommons, origin: .linked))
         }
         if let commons = tags["wikimedia_commons"], commons.hasPrefix("File:") { addCommons(commons) }
+        // Panoramax pictures a mapper linked to this feature.
+        for key in ["panoramax", "panoramax:0", "panoramax:1"] {
+            for id in (tags[key] ?? "").split(separator: ";").prefix(2) {
+                let uuid = id.trimmingCharacters(in: .whitespaces)
+                guard uuid.count >= 32, uuid.allSatisfy({ $0.isHexDigit || $0 == "-" }),
+                      let url = URL(string: "https://api.panoramax.xyz/api/pictures/\(uuid)/sd.jpg"), !seen.contains(url) else { continue }
+                seen.insert(url)
+                result.append(PlaceImage(url: url, pageURL: URL(string: "https://api.panoramax.xyz/#focus=pic&pic=\(uuid)"),
+                                         attribution: "Panoramax", license: nil, provider: .panoramax, origin: .linked))
+            }
+        }
         if let image = tags["image"]?.trimmingCharacters(in: .whitespaces), !image.isEmpty {
             if image.contains("wikimedia.org") || image.contains("wikipedia.org") || image.hasPrefix("File:") {
                 addCommons(image)

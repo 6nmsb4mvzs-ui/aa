@@ -20,7 +20,11 @@ struct PrivacyView: View {
                 PrivacyRow(service: "Apple Maps (MapKit)", host: "Apple",
                            receives: "Search terms with the map region, city searches, Look Around and maps for the Map tab — under Apple's privacy policy.")
                 PrivacyRow(service: "Venue websites", host: "The venue's own site",
-                           receives: "A normal page request (and robots.txt) for up to 10 venues per search, to read published events. Turn off under Data sources.")
+                           receives: "A normal page request (and robots.txt) to read published events (up to 10 venues per search) and, when a place without a photo scrolls into view, its preview image. Turn off under Data sources.")
+                PrivacyRow(service: "Panoramax", host: "api.panoramax.xyz and its image servers",
+                           receives: "A place's coordinates, to find a street-level photo facing it.")
+                PrivacyRow(service: "Mapillary (optional)", host: "graph.mapillary.com",
+                           receives: "Your token and a place's coordinates — only if you added a token.")
                 PrivacyRow(service: "YouTube Data API (optional)", host: "www.googleapis.com",
                            receives: "Your API key and the place/city name as a search term — only if you added a key.")
                 PrivacyRow(service: "Links you tap", host: "TikTok, Instagram, Reddit, Pinterest, Google Maps…",
@@ -72,7 +76,11 @@ struct DataSourcesView: View {
             source("Apple Maps (MapKit)", status: "Integrated",
                    detail: "Local business search to add and cross-check places, city autocomplete, Look Around imagery, and Apple's own place card (iOS 18+) for hours, photos and prices where Apple has them.")
             source("Venue websites", status: "Integrated",
-                   detail: "Events published as schema.org data on venues' own websites. robots.txt is respected; only events with explicit dates and locations are shown.")
+                   detail: "Events published as schema.org data on venues' own websites, and each venue's own preview photo. robots.txt is respected; only events with explicit dates and locations are shown.")
+            source("Panoramax", status: "Integrated",
+                   detail: "Open street-level imagery (free, no key) used as a photo for places that have none. Coverage varies by city.")
+            source("Mapillary", status: "Optional (your free token)",
+                   detail: "Street-level photos for most streets in Europe and North America; the app picks a picture whose camera faces the place.")
             source("YouTube Data API v3", status: "Optional (your free key)",
                    detail: "Related videos on place profiles and a local-buzz signal for the niche score.")
             source("TikTok", status: "Link only",

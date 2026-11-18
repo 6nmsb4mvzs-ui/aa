@@ -20,18 +20,26 @@ enum Deduplicator {
         /// Two records from the *same* provider (e.g. an OSM node and an OSM
         /// building way for one shop) need a near-identical name.
         var sameProviderSimilarity: Double = 0.95
-        var sameProviderDistance: Double = 40
+        var sameProviderDistance: Double = 80
+        /// Apple Maps / Wikidata coordinates can sit further from the OSM
+        /// point (building centroid vs. entrance); allow more distance for a
+        /// near-identical name from a different source.
+        var crossSourceExactDistance: Double = 220
+        var crossSourceExactSimilarity: Double = 0.95
     }
 
     static func shouldMerge(_ a: Place, _ b: Place, thresholds: Thresholds = Thresholds()) -> Bool {
         if a.id == b.id { return true }
         if let wa = a.wikidataID, let wb = b.wikidataID { return wa == wb }
         let distance = GeoMath.distance(a.coordinate, b.coordinate)
-        guard distance <= thresholds.maxDistance else { return false }
         // Inferred names ("Untitled mural") carry no identity.
         guard !a.isNameInferred, !b.isNameInferred else { return false }
-        let similarity = TextMatching.nameSimilarity(a.name, b.name)
         let sameProvider = !a.providers.isDisjoint(with: b.providers)
+        if !sameProvider && distance <= thresholds.crossSourceExactDistance && compatible(a.kind, b.kind) {
+            if TextMatching.nameSimilarity(a.name, b.name) >= thresholds.crossSourceExactSimilarity { return true }
+        }
+        guard distance <= thresholds.maxDistance else { return false }
+        let similarity = TextMatching.nameSimilarity(a.name, b.name)
         if sameProvider {
             return similarity >= thresholds.sameProviderSimilarity && distance <= thresholds.sameProviderDistance
                 && compatible(a.kind, b.kind)
@@ -74,8 +82,8 @@ enum Deduplicator {
             }
         }
 
-        // 2. Spatial grid (≈ 150 m cells) to compare only nearby candidates.
-        let cellSize = 0.0014
+        // 2. Spatial grid (≈ 250 m cells) to compare only nearby candidates.
+        let cellSize = 0.0023
         var grid: [String: [Int]] = [:]
         func cell(_ c: GeoCoordinate) -> (Int, Int) {
             let lonScale = max(0.2, cos(c.latitude * .pi / 180))
@@ -164,6 +172,10 @@ enum Deduplicator {
             base.signals = mergeSignals(base.signals, other.signals)
         }
         base.images.sort { ($0.origin == .linked ? 0 : 1) < ($1.origin == .linked ? 0 : 1) }
+        var aliases = Set(base.aliasIDs ?? [])
+        for member in sorted.dropFirst() { aliases.formUnion(member.allIDs) }
+        aliases.remove(base.id)
+        base.aliasIDs = aliases.isEmpty ? nil : aliases.sorted()
         return base
     }
 

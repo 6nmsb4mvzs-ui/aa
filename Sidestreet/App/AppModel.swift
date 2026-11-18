@@ -55,6 +55,16 @@ final class AppModel {
     @ObservationIgnored private var rankTask: Task<Void, Never>?
     @ObservationIgnored private var radiusTask: Task<Void, Never>?
     @ObservationIgnored private var hasStarted = false
+    /// Feed entries the user has already seen; they keep their positions
+    /// while further sources stream in (no place shows up a second time).
+    @ObservationIgnored private var seenEntryIDs = Set<String>()
+    @ObservationIgnored private var feedContext: FeedContext?
+    @ObservationIgnored private var resetFeedOrder = false
+
+    private struct FeedContext: Equatable {
+        var area: SearchArea
+        var filter: CategoryFilter
+    }
     @ObservationIgnored private var isResolvingLocation = false
     @ObservationIgnored private var recordedHistoryForArea: SearchArea?
 
@@ -82,6 +92,12 @@ final class AppModel {
     var isDemo: Bool { settings.demoMode }
 
     var timeZone: TimeZone { area?.timeZone ?? .current }
+
+    /// Which photo sources the card/profile photo search may use.
+    var photoOptions: PhotoFinder.Options {
+        PhotoFinder.Options(website: settings.websitePhotosEnabled, commons: settings.nearbyPhotosEnabled,
+                            streetLevel: settings.streetLevelPhotosEnabled, mapillaryToken: KeychainStore.mapillaryToken)
+    }
 
     var placeCount: Int { snapshot?.places.count ?? 0 }
 
@@ -351,6 +367,7 @@ final class AppModel {
 
     func discover(force: Bool = false) {
         guard !isDemo else { return }
+        if force { resetFeedOrder = true }
         guard let newArea = makeArea() else {
             discoveryTask?.cancel()
             loadState = .idle
@@ -420,7 +437,18 @@ final class AppModel {
                 return (ranked, HotspotDetector.detect(places: visible, themes: themes, limit: 3))
             }.value
             guard !Task.isCancelled, let self else { return }
-            self.feed = ranked
+            let context = FeedContext(area: area, filter: filter)
+            if self.feedContext == context && !self.resetFeedOrder && !self.seenEntryIDs.isEmpty {
+                let seen = self.feed.filter { self.seenEntryIDs.contains($0.id) }
+                let stable = FeedStabilizer.stabilize(previous: seen, pinnedCount: seen.count, ranked: ranked)
+                self.seenEntryIDs.formUnion(stable.prefix(seen.count).map(\.id))
+                self.feed = stable
+            } else {
+                self.seenEntryIDs = []
+                self.feed = ranked
+            }
+            self.feedContext = context
+            self.resetFeedOrder = false
             self.hotspots = hotspots
             if self.visibleCount > ranked.count { self.visibleCount = max(Self.pageSize, min(self.visibleCount, ranked.count)) }
         }
@@ -428,6 +456,7 @@ final class AppModel {
 
     /// Progressive loading: reveal the next page when the user nears the end.
     func entryAppeared(_ entry: FeedEntry) {
+        seenEntryIDs.insert(entry.id)
         guard let index = feed.firstIndex(of: entry) else { return }
         if index >= visibleCount - 5 && visibleCount < feed.count {
             visibleCount = min(feed.count, visibleCount + Self.pageSize)
@@ -496,6 +525,7 @@ final class AppModel {
 
     func clearCache() async {
         await AppEnvironment.cache.clear()
+        await AppEnvironment.photoFinder.clear()
         await ImagePipeline.shared.clearMemory()
         URLCache.shared.removeAllCachedResponses()
     }

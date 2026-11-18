@@ -206,6 +206,30 @@ final class ValidationTests: XCTestCase {
         XCTAssertFalse(PlaceValidator.isValid(noSource, area: area))
     }
 
+    func testServiceBusinessesAreNeverShops() {
+        let area = Fixture.area()
+        let gardener = Fixture.place(name: "Gartenpflege Hausmeisterservice und Gebäudereinigung Trier", kind: .thriftStore,
+                                     provider: .appleMaps)
+        XCTAssertFalse(PlaceValidator.isValid(gardener, area: area))
+        XCTAssertFalse(PlaceValidator.isValid(Fixture.place(name: "City Cleaning Services", kind: .vintageStore), area: area))
+        XCTAssertFalse(PlaceValidator.isValid(Fixture.place(name: "Allianz Versicherung", kind: .cafe), area: area))
+        // Real shops survive.
+        XCTAssertTrue(PlaceValidator.isValid(Fixture.place(name: "Liebe auf den 2ten Blick", kind: .thriftStore), area: area))
+        XCTAssertTrue(PlaceValidator.isValid(Fixture.place(name: "Ziegenbock.Bar", kind: .pub), area: area))
+        XCTAssertTrue(PlaceValidator.isValid(Fixture.place(name: "Zebrastreifen", kind: .bar), area: area), "'reifen' only matches at word start")
+        XCTAssertFalse(PlaceValidator.isValid(Fixture.place(name: "Reifen Müller", kind: .clothingStore), area: area))
+        // Public art named after a cleaning company isn't a business — not filtered.
+        XCTAssertTrue(PlaceValidator.isValid(Fixture.place(name: "Mural Reinigungsfirma Wall", kind: .mural), area: area))
+    }
+
+    func testSocialServicesAreNotCultureSpaces() {
+        let area = Fixture.area()
+        XCTAssertFalse(PlaceValidator.isValid(Fixture.place(name: "Bahnhofsmission", kind: .socialCentre), area: area))
+        XCTAssertFalse(PlaceValidator.isValid(Fixture.place(name: "Trierer Tafel e.V.", kind: .communityCentre), area: area))
+        XCTAssertTrue(PlaceValidator.isValid(Fixture.place(name: "Tufa", kind: .communityCentre), area: area))
+        XCTAssertTrue(PlaceValidator.isValid(Fixture.place(name: "KULTURSPEKTRUM", kind: .creativeHub), area: area))
+    }
+
     func testSampleDataNeverPassesValidation() {
         var sample = Fixture.place(name: "Sample Place")
         sample.isSample = true

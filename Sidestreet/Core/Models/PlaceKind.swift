@@ -17,7 +17,7 @@ enum PlaceKind: String, Codable, CaseIterable, Hashable, Sendable {
     case mural, graffiti, streetArt
     // Architecture & urban exploration
     case brutalistBuilding, modernistBuilding, notableBuilding, industrialHeritage
-    case waterTower, observationTower, bridge, staircase, creativeHub
+    case waterTower, observationTower, bridge, creativeHub
     // Music & nightlife
     case recordStore, musicVenue, nightclub, bar, pub, brewery
     // Alternative culture
@@ -61,7 +61,6 @@ enum PlaceKind: String, Codable, CaseIterable, Hashable, Sendable {
         case .waterTower: return "Water tower"
         case .observationTower: return "Observation tower"
         case .bridge: return "Bridge"
-        case .staircase: return "Staircase"
         case .creativeHub: return "Creative space"
         case .recordStore: return "Record store"
         case .musicVenue: return "Live music venue"
@@ -121,7 +120,6 @@ enum PlaceKind: String, Codable, CaseIterable, Hashable, Sendable {
         case .waterTower: return [.architecture, .hiddenGems]
         case .observationTower: return [.architecture, .photo, .hiddenGems]
         case .bridge: return [.architecture, .photo]
-        case .staircase: return [.architecture, .photo, .hiddenGems]
         case .creativeHub: return [.culture, .architecture]
         case .recordStore: return [.music, .culture]
         case .musicVenue, .nightclub: return [.music]
@@ -149,16 +147,16 @@ enum PlaceKind: String, Codable, CaseIterable, Hashable, Sendable {
     var intrinsicNiche: Double {
         switch self {
         case .diySkatepark, .socialCentre, .hackerspace: return 0.95
-        case .graffiti, .skateSpot, .industrialHeritage, .staircase: return 0.85
+        case .graffiti, .skateSpot, .industrialHeritage: return 0.85
         case .vintageStore, .recordStore, .brutalistBuilding, .giveBox, .publicBookcase: return 0.82
         case .thriftStore, .fleaMarket, .streetwearStore, .skateShop, .independentCinema: return 0.78
         case .mural, .streetArt, .musicVenue, .comicStore, .gameStore, .cameraStore, .waterTower: return 0.72
         case .charityShop, .tattooStudio, .arcade, .coffeeRoaster, .creativeHub, .communityGarden: return 0.68
         case .designerBoutique, .gallery, .nightclub, .modernistBuilding, .antiques: return 0.62
-        case .skatepark, .bookstore, .viewpoint, .brewery, .veganRestaurant, .beach: return 0.6
+        case .skatepark, .bookstore, .viewpoint, .brewery, .veganRestaurant, .beach, .bar, .pub: return 0.6
         case .sneakerStore, .boutique, .localFood, .artwork, .pond, .waterfall: return 0.52
         case .observationTower, .bridge, .communityCentre, .vegetarianRestaurant: return 0.45
-        case .notableBuilding, .market, .bar, .pub, .lake, .peak, .garden: return 0.38
+        case .notableBuilding, .market, .lake, .peak, .garden: return 0.38
         case .cafe, .bakery, .clothingStore, .museum: return 0.3
         case .restaurant, .cinema, .streetFood: return 0.2
         case .fashionChain: return 0.05
@@ -174,8 +172,9 @@ enum PlaceKind: String, Codable, CaseIterable, Hashable, Sendable {
         case .musicVenue, .nightclub, .streetArt, .tattooStudio, .fleaMarket, .comicStore: return 0.8
         case .mural, .gameStore, .arcade, .cameraStore, .charityShop, .independentCinema: return 0.65
         case .brutalistBuilding, .industrialHeritage, .creativeHub, .sneakerStore, .giveBox: return 0.6
-        case .gallery, .coffeeRoaster, .bookstore, .staircase, .publicBookcase, .designerBoutique: return 0.45
-        case .bar, .pub, .brewery, .veganRestaurant, .communityGarden, .antiques: return 0.4
+        case .gallery, .coffeeRoaster, .bookstore, .publicBookcase, .designerBoutique: return 0.45
+        case .bar, .pub, .brewery: return 0.55
+        case .veganRestaurant, .communityGarden, .antiques: return 0.4
         case .boutique, .modernistBuilding, .waterTower, .communityCentre, .vegetarianRestaurant: return 0.3
         case .cafe, .artwork, .bridge, .viewpoint, .observationTower, .beach: return 0.2
         case .clothingStore, .market, .bakery, .localFood, .notableBuilding, .museum, .cinema: return 0.15
@@ -191,7 +190,7 @@ enum PlaceKind: String, Codable, CaseIterable, Hashable, Sendable {
         case .thriftStore, .charityShop, .fleaMarket, .streetFood, .giveBox, .publicBookcase: return .budget
         case .designerBoutique: return .premium
         case .skatepark, .diySkatepark, .skateSpot, .mural, .graffiti, .streetArt, .artwork,
-             .viewpoint, .bridge, .staircase, .communityGarden, .pond, .lake, .beach, .waterfall, .peak:
+             .viewpoint, .bridge, .communityGarden, .pond, .lake, .beach, .waterfall, .peak:
             return .free
         default: return nil
         }
@@ -230,7 +229,6 @@ enum PlaceKind: String, Codable, CaseIterable, Hashable, Sendable {
         case .industrialHeritage: return "gearshape.2"
         case .waterTower, .observationTower: return "building.columns"
         case .bridge: return "road.lanes"
-        case .staircase: return "stairs"
         case .creativeHub: return "paintpalette"
         case .recordStore: return "opticaldisc"
         case .musicVenue: return "music.mic"

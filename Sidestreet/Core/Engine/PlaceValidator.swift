@@ -11,9 +11,60 @@ enum PlaceValidator {
         guard !place.isSample else { return false } // sample data never mixes with real results
         guard place.coordinate.isValid else { return false }
         guard isValidName(place.name) else { return false }
+        // Service companies (cleaning, caretaking, insurance …) are never shops,
+        // cafés or venues, whatever a fuzzy search returned them for.
+        if place.kind.isBusiness && looksLikeServiceBusiness(place.name) { return false }
+        // Social-service offices (station missions, food banks, job centres)
+        // aren't cultural or DIY spaces.
+        if [.socialCentre, .communityCentre, .creativeHub, .hackerspace].contains(place.kind)
+            && looksLikeSocialService(place.name) { return false }
         guard GeoMath.distance(place.coordinate, area.center) <= area.radiusMeters * 1.05 + 30 else { return false }
         guard !place.sources.isEmpty else { return false }
         return true
+    }
+
+    /// Distinctive (often compound) service-business words, matched anywhere
+    /// in the folded name: "Hausmeisterservice", "Gebäudereinigung" …
+    static let serviceCompoundFragments: [String] = [
+        "hausmeister", "gartenpflege", "landschaftsbau", "gebaudereinigung", "glasreinigung", "entrumpelung",
+        "versicherung", "immobilien", "hausverwaltung", "steuerberat", "rechtsanwalt", "zahnarzt", "arztpraxis",
+        "physiotherap", "ergotherap", "fahrschule", "pflegedienst", "bestattung", "autohaus", "schlusseldienst",
+        "schadlingsbekampf", "inkasso", "zeitarbeit", "personaldienst", "malerbetrieb", "dachdecker",
+        "elektroinstall", "real estate", "estate agent", "law firm", "driving school", "car repair",
+        "auto repair", "moving company", "pest control", "property management", "facility management", "lawn care",
+    ]
+
+    /// Short service words, matched only at the start of a word (so "Zebrastreifen"
+    /// is not mistaken for a tyre shop).
+    static let serviceWordPrefixes: [String] = [
+        "reinigung", "umzug", "kanzlei", "notar", "kfz", "reifen", "sanitar", "heizung", "cleaning", "janitor",
+        "gardening", "landscaping", "plumb", "locksmith", "insurance", "realty", "dentist", "dental", "attorney",
+        "solicitor", "removals", "accountant", "staffing", "handyman", "nettoyage", "assurance", "immobilier",
+        "notaire", "plombier", "serrurier", "demenagement", "limpieza", "seguros", "inmobiliaria", "pulizie",
+        "assicurazion", "schoonmaak", "verzekering", "makelaar",
+    ]
+
+    static func looksLikeServiceBusiness(_ name: String) -> Bool {
+        let tokens = TextMatching.tokens(name)
+        let joined = tokens.joined(separator: " ")
+        if serviceCompoundFragments.contains(where: { joined.contains($0) }) { return true }
+        return tokens.contains { token in serviceWordPrefixes.contains { token.hasPrefix($0) } }
+    }
+
+    static let socialServiceFragments: [String] = [
+        "bahnhofsmission", "caritas", "diakonie", "tafel", "jobcenter", "arbeitsagentur", "sozialamt", "jugendamt",
+        "obdachlos", "wohnungslos", "suchtberatung", "drogenberatung", "schuldnerberatung", "seniorenheim", "altenheim",
+        "pflegeheim", "kindergarten", "kita", "grundschule", "gymnasium", "realschule", "gemeindehaus", "pfarrheim",
+        "pfarrzentrum", "kirchengemeinde", "food bank", "homeless", "job centre", "jobcentre", "care home",
+        "nursing home", "kindergarten", "secours", "restos du coeur",
+    ]
+
+    static func looksLikeSocialService(_ name: String) -> Bool {
+        let tokens = TextMatching.tokens(name)
+        let joined = tokens.joined(separator: " ")
+        return socialServiceFragments.contains { fragment in
+            fragment.count >= 6 ? joined.contains(fragment) : tokens.contains { $0.hasPrefix(fragment) }
+        }
     }
 
     static func isValidName(_ name: String) -> Bool {

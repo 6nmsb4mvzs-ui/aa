@@ -35,6 +35,11 @@ enum KeychainStore {
         return SecItemAdd(attributes as CFDictionary, nil) == errSecSuccess
     }
 
+    static var mapillaryToken: String? {
+        get { string(for: "mapillary.token") }
+        set { set(newValue?.trimmingCharacters(in: .whitespacesAndNewlines), for: "mapillary.token") }
+    }
+
     static var youTubeAPIKey: String? {
         get { string(for: "youtube.apiKey") }
         set { set(newValue?.trimmingCharacters(in: .whitespacesAndNewlines), for: "youtube.apiKey") }

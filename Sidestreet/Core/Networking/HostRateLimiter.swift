@@ -32,6 +32,8 @@ actor HostRateLimiter {
             return Policy(maxConcurrent: 2, minInterval: 0.4)
         }
         if host.hasSuffix("googleapis.com") { return Policy(maxConcurrent: 2, minInterval: 0.2) }
+        if host == "api.panoramax.xyz" { return Policy(maxConcurrent: 2, minInterval: 0.3) }
+        if host == "graph.mapillary.com" { return Policy(maxConcurrent: 3, minInterval: 0.1) }
         // Third-party venue websites: be gentle.
         return Policy(maxConcurrent: 1, minInterval: 1.0)
     }

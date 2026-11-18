@@ -94,6 +94,14 @@ enum FeedEntry: Identifiable, Hashable, Sendable {
         }
     }
 
+    /// Feed IDs of this entry, including IDs of records merged into it.
+    var allIDs: [String] {
+        switch self {
+        case .place(let place): return place.allIDs.map { "p:" + $0 }
+        case .event(let event): return ["e:" + event.id]
+        }
+    }
+
     var coordinate: GeoCoordinate? {
         switch self {
         case .place(let place): return place.coordinate

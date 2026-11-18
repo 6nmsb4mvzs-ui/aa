@@ -12,6 +12,9 @@ Every integration below was checked for availability, cost, rate limits, terms a
 | Wikimedia Commons | **Integrated** | none | free | Photos (linked + geotagged nearby) |
 | Apple MapKit (on device) | **Integrated** | none | free | Local search, city autocomplete, geocoding, Look Around, place card |
 | Venue websites (schema.org JSON-LD) | **Integrated** | none | free | Upcoming events |
+| Panoramax | **Integrated** | none | free | Street-level photo facing places that have no photo |
+| Venue website preview images | **Integrated** | none | free | The venue's own photo (Open Graph / page image) |
+| Mapillary | **Optional** | your own token | free | Street-level photo facing the place |
 | YouTube Data API v3 | **Optional** | your own | free quota | Videos on profiles, "local buzz" signal |
 | TikTok | Link only | — | — | Opens TikTok search |
 | Instagram | Link only | — | — | Opens Instagram search |
@@ -66,6 +69,19 @@ Every integration below was checked for availability, cost, rate limits, terms a
 - **What:** many clubs, galleries, cinemas and markets publish their programme as schema.org `Event` JSON-LD for search engines. Sidestreet reads it from the venue's own public website.
 - **Rules:** robots.txt is fetched and respected (RFC 9309 subset); at most 10 venues per run, ≤ 3 concurrently, ≤ 1 request/s per host; at most one same-site "events/programme" link is followed; 3 MB page limit.
 - **Validation:** only events with an explicit `startDate`, a confirmed location (coordinates, address, or the venue itself), not cancelled/postponed/online-only, not in the past, within 120 days.
+
+## Photos for places without one
+
+Each card asks `PhotoFinder` (results cached for a week), in this order:
+
+1. **Linked photos** from the data itself — OSM `image`, `wikimedia_commons`, `panoramax` tags; Wikidata P18.
+2. **The venue's own website** — its Open Graph / Twitter-card preview image, a schema.org business `image`, or the first real photo on the page (logos, icons, avatars and banners are skipped; robots.txt respected).
+3. **Wikimedia Commons** geotagged photos within 35 m — only for street art, architecture, viewpoints and other public spaces, where a nearby photo usually shows the place itself.
+4. **Mapillary** (optional, your free token from mapillary.com/dashboard/developers) — a recent, non-panoramic picture 4–45 m away whose camera faces the place. CC BY-SA 4.0.
+5. **Panoramax** (`api.panoramax.xyz/api/search?place_position=…`) — open street-level imagery looking at the place; free, no key. Coverage varies.
+6. **Apple Look Around** snapshot (on device), then a neutral placeholder.
+
+Every non-linked photo is labelled on the card (WEBSITE · STREET VIEW · NEARBY PHOTO · LOOK AROUND) and credited in the profile. In a Trier test, venue websites and Commons alone lifted photo coverage of the top 40 places from 10 to 20; Apple-provided websites, Look Around and Mapillary add more on the phone.
 
 ## Recurring markets (OpenStreetMap)
 

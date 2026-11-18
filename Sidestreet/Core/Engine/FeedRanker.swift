@@ -89,8 +89,14 @@ struct FeedRanker: Sendable {
     /// Filters and orders the whole feed.
     func rank(places: [Place], events: [DiscoveryEvent], area: SearchArea, filter: CategoryFilter, now: Date) -> [FeedEntry] {
         let venues = Dictionary(places.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        // A market with a dated event card is shown once — as the event.
+        let marketsWithEvents = Set(events.filter { $0.recurrence != nil && filter.matches($0) && $0.isUpcoming(now: now) }
+            .compactMap(\.venuePlaceID))
         var candidates: [(entry: FeedEntry, score: Double)] = []
+        var seenIDs = Set<String>()
         for place in places where filter.matches(place) && area.contains(place.coordinate) {
+            if marketsWithEvents.contains(place.id) { continue }
+            guard seenIDs.insert(place.id).inserted else { continue }
             candidates.append((.place(place), baseScore(place, area: area, filter: filter)))
         }
         for event in events where filter.matches(event) && event.isUpcoming(now: now) {
@@ -134,5 +140,33 @@ struct FeedRanker: Sendable {
         if window.filter({ $0.primaryCategory == entry.primaryCategory }).count >= 2 { p += penalties.categoryCrowding }
         if let a = last.coordinate, let b = entry.coordinate, GeoMath.distance(a, b) < 80 { p += penalties.adjacentLocation }
         return p
+    }
+}
+
+/// Keeps the feed stable while results stream in: entries the user has
+/// already been shown keep their positions (matched by ID, including IDs of
+/// records merged into them later); newly ranked entries follow. Without
+/// this, a re-rank after a slow source arrives would move places the user
+/// already scrolled past further down, where they'd appear a second time.
+enum FeedStabilizer {
+    static func stabilize(previous: [FeedEntry], pinnedCount: Int, ranked: [FeedEntry]) -> [FeedEntry] {
+        guard pinnedCount > 0, !previous.isEmpty else { return ranked }
+        var lookup: [String: FeedEntry] = [:]
+        for entry in ranked {
+            for id in entry.allIDs where lookup[id] == nil { lookup[id] = entry }
+        }
+        var result: [FeedEntry] = []
+        var used = Set<String>()
+        for old in previous.prefix(pinnedCount) {
+            for id in old.allIDs {
+                if let current = lookup[id], !used.contains(current.id) {
+                    result.append(current)
+                    used.insert(current.id)
+                    break
+                }
+            }
+        }
+        result += ranked.filter { !used.contains($0.id) }
+        return result
     }
 }

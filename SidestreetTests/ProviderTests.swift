@@ -411,3 +411,26 @@ final class APIFailureTests: XCTestCase {
         XCTAssertEqual(YouTubeService.mentionCount(of: "Bar", in: videos), 0, "generic names are not counted")
     }
 }
+
+final class SearchEvidenceTests: XCTestCase {
+    func testThriftQueryRejectsServiceCompanyAndAcceptsRealShops() {
+        let thrift = SearchEvidence(mode: .name, nameFragments: SearchEvidence.thrift)
+        XCTAssertFalse(thrift.accepts(name: "Gartenpflege Hausmeisterservice und Gebäudereinigung Trier", category: "MKPOICategoryStore"))
+        XCTAssertTrue(thrift.accepts(name: "Liebe auf den 2ten Blick", category: nil))
+        XCTAssertTrue(thrift.accepts(name: "Humana Second Hand & Vintage", category: "MKPOICategoryStore"))
+        XCTAssertTrue(thrift.accepts(name: "Sozialkaufhaus Trier", category: nil))
+    }
+
+    func testCategoryModeNeedsMatchingCategory() {
+        let bar = SearchEvidence(mode: .category, categories: ["MKPOICategoryNightlife"])
+        XCTAssertTrue(bar.accepts(name: "Ziegenbock Bar", category: "MKPOICategoryNightlife"))
+        XCTAssertFalse(bar.accepts(name: "Bar Code Software GmbH", category: nil))
+        XCTAssertFalse(bar.accepts(name: "Barber Shop", category: "MKPOICategoryBeauty"))
+    }
+
+    func testCompoundsCount() {
+        let records = SearchEvidence(mode: .name, nameFragments: SearchEvidence.records)
+        XCTAssertTrue(records.accepts(name: "Plattenladen am Markt", category: nil))
+        XCTAssertFalse(records.accepts(name: "Schuhhaus Müller", category: "MKPOICategoryStore"))
+    }
+}

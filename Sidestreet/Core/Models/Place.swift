@@ -9,6 +9,8 @@ enum SourceProvider: String, Codable, Hashable, Sendable, CaseIterable, Identifi
     case appleMaps
     case venueWebsite
     case youtube
+    case panoramax
+    case mapillary
     case sample
 
     var id: String { rawValue }
@@ -22,6 +24,8 @@ enum SourceProvider: String, Codable, Hashable, Sendable, CaseIterable, Identifi
         case .appleMaps: return "Apple Maps"
         case .venueWebsite: return "Venue website"
         case .youtube: return "YouTube"
+        case .panoramax: return "Panoramax"
+        case .mapillary: return "Mapillary"
         case .sample: return "Sample data"
         }
     }
@@ -74,6 +78,8 @@ struct PlaceImage: Hashable, Codable, Sendable {
         case linked
         /// Image taken near the place's coordinates (may show surroundings).
         case nearby
+        /// Street-level picture looking towards the place.
+        case streetLevel
     }
 
     var url: URL
@@ -253,8 +259,14 @@ struct Place: Identifiable, Hashable, Codable, Sendable {
     var confidence: ConfidenceLevel = .uncertain
     /// True only for clearly-labelled sample data used in previews/demo mode.
     var isSample: Bool = false
+    /// IDs of records that were merged into this place (e.g. an Apple Maps
+    /// record that turned out to be the same shop as an OSM node).
+    var aliasIDs: [String]? = nil
 
     var primaryCategory: DiscoveryCategory { kind.primaryCategory }
+
+    /// This place's ID and every merged record's ID.
+    var allIDs: [String] { [id] + (aliasIDs ?? []) }
 
     var providers: Set<SourceProvider> { Set(sources.map(\.provider)) }
 

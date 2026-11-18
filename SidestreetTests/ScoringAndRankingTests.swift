@@ -359,3 +359,50 @@ final class HotspotDetectorTests: XCTestCase {
         XCTAssertTrue(HotspotDetector.detect(places: places).isEmpty)
     }
 }
+
+final class FeedStabilityTests: XCTestCase {
+    let now = Fixture.referenceDate
+
+    func testShownEntriesKeepTheirPositionsAfterReRank() {
+        let a = Fixture.place(id: "a", name: "A", kind: .cafe)
+        let b = Fixture.place(id: "b", name: "B", kind: .mural)
+        let c = Fixture.place(id: "c", name: "C", kind: .vintageStore)
+        let previous: [FeedEntry] = [.place(a), .place(b), .place(c)]
+        // A new source arrives and the ranker now prefers a new place D, then C, A, B.
+        let d = Fixture.place(id: "d", name: "D", kind: .recordStore)
+        let ranked: [FeedEntry] = [.place(d), .place(c), .place(a), .place(b)]
+        let stable = FeedStabilizer.stabilize(previous: previous, pinnedCount: 2, ranked: ranked)
+        XCTAssertEqual(stable.map(\.id), ["p:a", "p:b", "p:d", "p:c"], "seen cards stay; new ones follow")
+        XCTAssertEqual(Set(stable.map(\.id)).count, stable.count, "no duplicates")
+    }
+
+    func testMergedRecordKeepsItsSlot() {
+        let apple = Fixture.place(id: "apple:1", name: "Cubiculum", kind: .pub, provider: .appleMaps)
+        let previous: [FeedEntry] = [.place(apple)]
+        var merged = Fixture.place(id: "osm:node/676537733", name: "Cubiculum", kind: .pub)
+        merged.aliasIDs = ["apple:1"]
+        let stable = FeedStabilizer.stabilize(previous: previous, pinnedCount: 1,
+                                              ranked: [.place(Fixture.place(id: "x", name: "X", kind: .bar)), .place(merged)])
+        XCTAssertEqual(stable.map(\.id), ["p:osm:node/676537733", "p:x"], "the merged place stays in the seen slot, not shown again later")
+    }
+
+    func testMarketWithEventCardIsShownOnce() {
+        var market = Fixture.place(id: "m", name: "Trödelmarkt", kind: .fleaMarket)
+        market.openingHoursRaw = "Sa 09:00-16:00"
+        let events = RecurringMarketEvents.events(from: [market], area: Fixture.area(), now: now)
+        XCTAssertEqual(events.count, 1)
+        let feed = FeedRanker().rank(places: NicheScorer(now: now).score([market]), events: events, area: Fixture.area(),
+                                     filter: CategoryFilter(), now: now)
+        XCTAssertEqual(feed.count, 1)
+        if case .event = feed[0] {} else { XCTFail("market should appear as its dated event") }
+    }
+
+    func testAppleAndOSMRecordsOfSameBarMergeDespiteOffset() {
+        let osm = Fixture.place(id: "osm:node/570702815", name: "Ziegenbock.Bar", kind: .pub)
+        let apple = Fixture.place(id: "apple:zb", name: "Ziegenbock Bar", kind: .bar, at: Fixture.offset(north: 170), provider: .appleMaps)
+        let merged = Deduplicator.merge([osm, apple])
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged[0].aliasIDs, ["apple:zb"])
+        XCTAssertEqual(merged[0].providers, [.openStreetMap, .appleMaps])
+    }
+}

@@ -28,11 +28,6 @@ struct DiscoveryCard: View {
                 }
                 .padding(Theme.gutter)
             }
-            .overlay(alignment: .topTrailing) {
-                if settings.showNicheScore, let score = place.score {
-                    ScoreBadge(score: score.display).padding(12)
-                }
-            }
             .overlay(alignment: .topLeading) {
                 HStack(spacing: 6) {
                     if place.isSample { Tag(text: "Sample", color: Theme.accent, filled: true) }
@@ -87,17 +82,23 @@ struct MetaRow: View {
     }
 }
 
-/// Card image: linked photo → (optional) Look Around snapshot → placeholder art.
+/// Card image: linked photo → photo search (venue website, Commons,
+/// street-level) → Apple Look Around → placeholder art. Non-linked sources
+/// are labelled in the corner.
 struct CardImage: View {
+    @Environment(AppModel.self) private var model
     @Environment(AppSettings.self) private var settings
     var place: Place
+    @State private var found: PlaceImage?
     @State private var lookAround: UIImage?
+
+    private var image: PlaceImage? { place.primaryImage ?? found }
 
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
-            ZStack(alignment: .bottomTrailing) {
-                if let image = place.primaryImage {
+            ZStack {
+                if let image {
                     RemoteImage(url: image.url) { fallback }
                         .frame(width: size.width, height: size.height)
                         .clipped()
@@ -107,30 +108,62 @@ struct CardImage: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: size.width, height: size.height)
                         .clipped()
-                        .overlay(alignment: .topTrailing) {
-                            Text("LOOK AROUND").font(.system(size: 8, weight: .bold).width(.expanded))
-                                .foregroundStyle(.white.opacity(0.7))
-                                .padding(.horizontal, 6).padding(.vertical, 3)
-                                .background(.black.opacity(0.4), in: Capsule())
-                                .padding(.top, 66).padding(.trailing, 12)
-                        }
                 } else {
                     fallback.frame(width: size.width, height: size.height)
                 }
             }
-            .task(id: place.id) {
-                guard place.primaryImage == nil, settings.lookAroundEnabled, !place.isSample else { return }
-                if let cached = LookAroundService.shared.cachedSnapshot(at: place.coordinate) {
-                    lookAround = cached
-                    return
+            .overlay(alignment: .topTrailing) {
+                if let label = sourceLabel {
+                    Text(label)
+                        .font(.system(size: 8, weight: .bold).width(.expanded))
+                        .foregroundStyle(.white.opacity(0.8))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(.black.opacity(0.45), in: Capsule())
+                        .padding(12)
                 }
-                // Small delay so fast scrolling doesn't request snapshots for every card.
-                try? await Task.sleep(nanoseconds: 350_000_000)
-                guard !Task.isCancelled else { return }
-                let target = CGSize(width: max(size.width, 300), height: max(size.height, 225))
-                lookAround = await LookAroundService.shared.snapshot(at: place.coordinate, size: target)
+            }
+            .task(id: place.id) {
+                await loadPhoto(size: size)
             }
         }
+    }
+
+    private var sourceLabel: String? {
+        if let image {
+            switch (image.provider, image.origin) {
+            case (.venueWebsite, _): return "WEBSITE"
+            case (_, .streetLevel): return "STREET VIEW · \(image.provider.displayName.uppercased())"
+            case (_, .nearby): return "NEARBY PHOTO"
+            default: return nil
+            }
+        }
+        return lookAround != nil ? "LOOK AROUND" : nil
+    }
+
+    private func loadPhoto(size: CGSize) async {
+        guard place.primaryImage == nil, !place.isSample else { return }
+        let finder = AppEnvironment.photoFinder
+        var needsSearch = true
+        if let cached = await finder.cachedPhoto(for: place) {
+            found = cached
+            needsSearch = false
+            if cached != nil { return }
+        }
+        // Short delay so fast scrolling doesn't trigger lookups for every card.
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        guard !Task.isCancelled else { return }
+        if needsSearch {
+            found = await finder.photo(for: place, options: model.photoOptions)
+            if found != nil || Task.isCancelled { return }
+        }
+        guard settings.lookAroundEnabled else { return }
+        if let cached = LookAroundService.shared.cachedSnapshot(at: place.coordinate) {
+            lookAround = cached
+            return
+        }
+        let target = CGSize(width: max(size.width, 300), height: max(size.height, 225))
+        lookAround = await LookAroundService.shared.snapshot(at: place.coordinate, size: target)
     }
 
     private var fallback: some View {

@@ -158,6 +158,31 @@ final class LiveSourcesTests: XCTestCase {
         XCTAssertTrue(anySucceeded, "no Overpass endpoint answered")
     }
 
+    /// Photo coverage for the top of the feed (website previews, Commons, Panoramax).
+    func testPhotoCoverageReport() async throws {
+        let city = Self.selectedCities[0]
+        let client = makeClient()
+        let area = SearchArea(center: city.center, radiusMeters: city.radius, label: city.name, subtitle: nil,
+                              centerSource: .city, timeZoneIdentifier: city.timeZone, countryCode: nil)
+        let engine = DiscoveryEngine(sources: .init(overpass: skipOverpass ? nil : OverpassProvider(client: client),
+                                                    wikidata: WikidataProvider(client: client)),
+                                     cache: DiscoveryCache(directory: nil))
+        var final: DiscoverySnapshot?
+        for await update in engine.discover(area: area, forceRefresh: true) { final = update.snapshot }
+        let snapshot = try XCTUnwrap(final)
+        let feed = FeedRanker().rank(places: snapshot.places, events: [], area: area, filter: CategoryFilter(), now: Date())
+        let finder = PhotoFinder(client: client, cacheFile: nil)
+        var counts: [String: Int] = [:]
+        let top = feed.prefix(40).compactMap { entry -> Place? in if case .place(let p) = entry { return p }; return nil }
+        for place in top {
+            let image = await finder.photo(for: place, options: .init())
+            let key = image.map { "\($0.provider.rawValue)/\($0.origin.rawValue)" } ?? "none"
+            counts[key, default: 0] += 1
+            print("  photo: \(place.name) [\(place.kind.label)] → \(image?.url.absoluteString.prefix(90) ?? "none")")
+        }
+        print("photo coverage in top \(top.count) of \(city.name): \(counts.sorted { $0.key < $1.key })")
+    }
+
     func testCommonsThumbnailsResolve() async throws {
         let client = makeClient()
         for file in ["Tresor - Berlin.jpg", "Berlin-kreuzberg anhalter-steg 20061018 219.jpg"] {

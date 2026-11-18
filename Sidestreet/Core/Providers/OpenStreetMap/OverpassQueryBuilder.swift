@@ -62,7 +62,6 @@ enum OverpassQueryBuilder {
               nwr["craft"~"^(roaster|coffee_roaster|brewery)$"];
               nwr["shop"="coffee"][!"brand"];
               nwr["leisure"="garden"]["garden:type"="community"];
-              nwr["highway"="steps"]["name"];
               nwr["man_made"="bridge"]["name"];
               nwr["natural"="water"]["water"~"^(pond|lake|reservoir|lagoon)$"]["name"];
               nwr["natural"~"^(peak|beach|hill)$"]["name"];
