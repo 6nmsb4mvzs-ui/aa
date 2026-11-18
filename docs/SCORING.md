@@ -37,7 +37,7 @@ Confidence labels: **Verified** (≥ 0.62 and either two sources or a check date
 ## Feed ranking
 
 ```
-base = 0.38 niche + 0.17 quality + 0.10 affordability + 0.20 distance + 0.15 relevance
+base = 0.42 niche + 0.17 quality + 0.09 affordability + 0.17 distance + 0.15 relevance
 ```
 
 - *quality* = 0.6 × confidence + 0.4 × completeness (photo, hours, address).

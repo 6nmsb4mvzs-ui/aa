@@ -37,16 +37,31 @@ struct AppleMapsProvider: PlaceSearchProvider {
     func searchPlaces(in area: SearchArea, now: Date) async throws -> [Place] {
         var results: [Place] = []
         var failures = 0
-        for query in Self.queries {
+        var throttled = false
+        // Three searches at a time: fast enough to arrive within seconds,
+        // gentle enough to stay under Apple's search throttling.
+        let batches = stride(from: 0, to: Self.queries.count, by: 3).map {
+            Array(Self.queries[$0..<min($0 + 3, Self.queries.count)])
+        }
+        for batch in batches {
             try Task.checkCancellation()
-            do {
-                results += try await search(query, area: area, now: now)
-            } catch {
-                failures += 1
-                // Throttled: stop issuing more queries this run.
-                if (error as NSError).code == MKError.Code.loadingThrottled.rawValue { break }
+            if throttled { break }
+            await withTaskGroup(of: Result<[Place], Error>.self) { group in
+                for query in batch {
+                    group.addTask {
+                        do { return .success(try await search(query, area: area, now: now)) } catch { return .failure(error) }
+                    }
+                }
+                for await result in group {
+                    switch result {
+                    case .success(let places):
+                        results += places
+                    case .failure(let error):
+                        failures += 1
+                        if (error as NSError).code == MKError.Code.loadingThrottled.rawValue { throttled = true }
+                    }
+                }
             }
-            try await Task.sleep(nanoseconds: 150_000_000)
         }
         if results.isEmpty && failures > 0 { throw NetworkError.transport("Apple Maps search unavailable") }
         return results

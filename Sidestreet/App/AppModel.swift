@@ -103,6 +103,15 @@ final class AppModel {
         }.sorted { $0.provider.rawValue < $1.provider.rawValue }
     }
 
+    /// OpenStreetMap (the main source of shops, cafés and spots) is still loading.
+    var isMapDataLoading: Bool {
+        snapshot?.sourceStatuses[.openStreetMap] == .loading
+    }
+
+    var mapDataFailed: Bool {
+        snapshot?.sourceStatuses[.openStreetMap]?.isFailure ?? false
+    }
+
     var isLoadingSources: Bool {
         snapshot?.sourceStatuses.values.contains { $0 == .loading } ?? false
     }

@@ -28,8 +28,8 @@ struct CategoryFilter: Hashable, Codable, Sendable {
 
 /// Hybrid feed ranking with variety-aware re-ranking.
 ///
-/// Base score = 0.38 niche + 0.17 quality + 0.10 affordability
-///            + 0.20 distance + 0.15 relevance
+/// Base score = 0.42 niche + 0.17 quality + 0.09 affordability
+///            + 0.17 distance + 0.15 relevance
 ///
 /// Then a greedy re-ranking picks, at each position, the best remaining
 /// entry after penalties for repeating the previous category, repeating a
@@ -37,10 +37,10 @@ struct CategoryFilter: Hashable, Codable, Sendable {
 /// place — so the feed doesn't show five cafés in a row.
 struct FeedRanker: Sendable {
     struct Weights: Sendable {
-        var niche = 0.38
+        var niche = 0.42
         var quality = 0.17
-        var affordability = 0.10
-        var distance = 0.20
+        var affordability = 0.09
+        var distance = 0.17
         var relevance = 0.15
     }
 

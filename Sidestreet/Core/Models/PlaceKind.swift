@@ -157,10 +157,10 @@ enum PlaceKind: String, Codable, CaseIterable, Hashable, Sendable {
         case .designerBoutique, .gallery, .nightclub, .modernistBuilding, .antiques: return 0.62
         case .skatepark, .bookstore, .viewpoint, .brewery, .veganRestaurant, .beach: return 0.6
         case .sneakerStore, .boutique, .localFood, .artwork, .pond, .waterfall: return 0.52
-        case .observationTower, .bridge, .communityCentre, .vegetarianRestaurant, .streetFood: return 0.45
+        case .observationTower, .bridge, .communityCentre, .vegetarianRestaurant: return 0.45
         case .notableBuilding, .market, .bar, .pub, .lake, .peak, .garden: return 0.38
         case .cafe, .bakery, .clothingStore, .museum: return 0.3
-        case .restaurant, .cinema: return 0.2
+        case .restaurant, .cinema, .streetFood: return 0.2
         case .fashionChain: return 0.05
         }
     }
@@ -177,9 +177,9 @@ enum PlaceKind: String, Codable, CaseIterable, Hashable, Sendable {
         case .gallery, .coffeeRoaster, .bookstore, .staircase, .publicBookcase, .designerBoutique: return 0.45
         case .bar, .pub, .brewery, .veganRestaurant, .communityGarden, .antiques: return 0.4
         case .boutique, .modernistBuilding, .waterTower, .communityCentre, .vegetarianRestaurant: return 0.3
-        case .cafe, .streetFood, .artwork, .bridge, .viewpoint, .observationTower, .beach: return 0.2
+        case .cafe, .artwork, .bridge, .viewpoint, .observationTower, .beach: return 0.2
         case .clothingStore, .market, .bakery, .localFood, .notableBuilding, .museum, .cinema: return 0.15
-        case .restaurant, .pond, .lake, .waterfall, .peak, .garden: return 0.1
+        case .restaurant, .streetFood, .pond, .lake, .waterfall, .peak, .garden: return 0.1
         case .fashionChain: return 0.05
         }
     }

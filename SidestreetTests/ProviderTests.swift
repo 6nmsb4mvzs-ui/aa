@@ -284,6 +284,24 @@ final class APIFailureTests: XCTestCase {
         XCTAssertEqual(client.requests.map { $0.url.host! }, ["overpass-api.de", "overpass.private.coffee"])
     }
 
+    func testWinningEndpointIsPreferredAndSlowOnesWait() async throws {
+        let health = OverpassProvider.EndpointHealth()
+        let client = MockHTTPClient { request in
+            if request.url.host == "overpass-api.de" {
+                try await Task.sleep(nanoseconds: 2_000_000_000) // slow but alive
+                return MockHTTPClient.ok(overpassFixture)
+            }
+            return MockHTTPClient.ok(overpassFixture)
+        }
+        var provider = OverpassProvider(client: client, endpoints: OverpassProvider.defaultEndpoints, health: health)
+        provider.hedgeDelay = 0.1
+        _ = try await provider.fetch(.niche, area: Fixture.area(), now: now)
+        _ = try await provider.fetch(.everyday, area: Fixture.area(), now: now)
+        let hosts = client.requests.map { $0.url.host! }
+        XCTAssertEqual(hosts.last, "overpass.private.coffee", "the follow-up query goes straight to the server that answered")
+        XCTAssertEqual(hosts.count, 3)
+    }
+
     func testOverpassRateLimitOnAllEndpointsThrows() async {
         let client = MockHTTPClient { _ in MockHTTPClient.status(429, headers: ["Retry-After": "30"]) }
         do {

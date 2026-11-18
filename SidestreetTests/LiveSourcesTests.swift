@@ -39,10 +39,21 @@ final class LiveSourcesTests: XCTestCase {
         URLSessionHTTPClient(identity: ClientIdentity(appVersion: "1.0-ci", contact: "https://github.com/"))
     }
 
+    /// `LIVE_CITY="Name;lat;lon;radius;TimeZone"` runs the report for one custom place.
+    static var selectedCities: [City] {
+        let env = ProcessInfo.processInfo.environment
+        if let spec = env["LIVE_CITY"] {
+            let parts = spec.split(separator: ";").map(String.init)
+            if parts.count >= 5, let lat = Double(parts[1]), let lon = Double(parts[2]), let radius = Double(parts[3]) {
+                return [City(name: parts[0], center: GeoCoordinate(latitude: lat, longitude: lon), radius: radius, timeZone: parts[4])]
+            }
+        }
+        return env["LIVE_ALL_CITIES"] == "1" ? cities : Array(cities.prefix(2))
+    }
+
     func testLiveDiscoveryReport() async throws {
         let client = makeClient()
-        for (index, city) in Self.cities.enumerated() {
-            if ProcessInfo.processInfo.environment["LIVE_ALL_CITIES"] != "1" && index > 1 { break }
+        for city in Self.selectedCities {
             let area = SearchArea(center: city.center, radiusMeters: city.radius, label: city.name, subtitle: nil,
                                   centerSource: .city, timeZoneIdentifier: city.timeZone, countryCode: nil)
             let engine = DiscoveryEngine(

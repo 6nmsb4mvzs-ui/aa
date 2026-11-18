@@ -42,24 +42,55 @@ struct OverpassProvider: Sendable {
         return Self.places(from: response, area: area, now: now)
     }
 
-    /// Remembers endpoints that recently failed so the next query (e.g. the
-    /// "everyday" query right after the "niche" one) doesn't wait on them again.
+    /// Remembers which endpoint answered last (tried first next time, also
+    /// across app launches for a few hours) and which failed or were slow
+    /// (tried last for 5 minutes), so follow-up queries don't wait on servers
+    /// that are down.
     actor EndpointHealth {
-        static let shared = EndpointHealth()
+        static let shared = EndpointHealth(persistenceKey: "overpass.preferredEndpoint")
+
         private var coolingDownUntil: [URL: Date] = [:]
+        private var preferred: (url: URL, since: Date)?
+        private let persistenceKey: String?
+        private static let preferenceLifetime: TimeInterval = 6 * 3600
+
+        init(persistenceKey: String? = nil) {
+            self.persistenceKey = persistenceKey
+            if let key = persistenceKey,
+               let string = UserDefaults.standard.string(forKey: key), let url = URL(string: string) {
+                let since = Date(timeIntervalSince1970: UserDefaults.standard.double(forKey: key + ".date"))
+                preferred = (url, since)
+            }
+        }
 
         func order(_ endpoints: [URL], now: Date = Date()) -> [URL] {
-            let healthy = endpoints.filter { (coolingDownUntil[$0] ?? .distantPast) <= now }
-            let cooling = endpoints.filter { (coolingDownUntil[$0] ?? .distantPast) > now }
+            var list = endpoints
+            if let preferred, now.timeIntervalSince(preferred.since) < Self.preferenceLifetime,
+               let index = list.firstIndex(of: preferred.url) {
+                list.remove(at: index)
+                list.insert(preferred.url, at: 0)
+            }
+            let healthy = list.filter { (coolingDownUntil[$0] ?? .distantPast) <= now }
+            let cooling = list.filter { (coolingDownUntil[$0] ?? .distantPast) > now }
             return healthy + cooling
         }
 
         func markFailed(_ endpoint: URL, now: Date = Date()) {
             coolingDownUntil[endpoint] = now.addingTimeInterval(5 * 60)
+            if preferred?.url == endpoint { preferred = nil }
         }
 
-        func markSucceeded(_ endpoint: URL) {
+        /// `slower` are endpoints that were still working when `endpoint` answered.
+        func markSucceeded(_ endpoint: URL, slower: [URL] = [], now: Date = Date()) {
             coolingDownUntil[endpoint] = nil
+            for url in slower where url != endpoint {
+                coolingDownUntil[url] = now.addingTimeInterval(5 * 60)
+            }
+            preferred = (endpoint, now)
+            if let key = persistenceKey {
+                UserDefaults.standard.set(endpoint.absoluteString, forKey: key)
+                UserDefaults.standard.set(now.timeIntervalSince1970, forKey: key + ".date")
+            }
         }
     }
 
@@ -68,7 +99,7 @@ struct OverpassProvider: Sendable {
     /// Delay before also asking the next endpoint while the current one is
     /// still working ("hedged" request). Different endpoints are different
     /// servers, so this never runs parallel queries against one server.
-    var hedgeDelay: TimeInterval = 15
+    var hedgeDelay: TimeInterval = 8
     /// Per-request timeout. Public Overpass servers can queue requests for
     /// 30–45 s when busy, so this is generous; other sources fill the feed meanwhile.
     var requestTimeout: TimeInterval = 60
@@ -87,12 +118,14 @@ struct OverpassProvider: Sendable {
             var nextIndex = 0
             var running = 0
             var lastError: NetworkError = .invalidResponse
+            var inFlight: [URL] = []
 
             func startNext() {
                 guard nextIndex < candidates.count else { return }
                 let endpoint = candidates[nextIndex]
                 nextIndex += 1
                 running += 1
+                inFlight.append(endpoint)
                 group.addTask {
                     do {
                         return .result(endpoint, .success(try await fetchOnce(query: query, endpoint: endpoint)))
@@ -119,11 +152,12 @@ struct OverpassProvider: Sendable {
                 case .hedge:
                     startNext()
                 case let .result(endpoint, .success(response)):
-                    await health?.markSucceeded(endpoint)
+                    await health?.markSucceeded(endpoint, slower: inFlight.filter { $0 != endpoint })
                     group.cancelAll()
                     return response
                 case let .result(endpoint, .failure(error)):
                     running -= 1
+                    inFlight.removeAll { $0 == endpoint }
                     if error == .cancelled {
                         if Task.isCancelled { throw error }
                         continue

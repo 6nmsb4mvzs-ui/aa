@@ -156,7 +156,7 @@ struct ScoringExplainerView: View {
                 Text("The weighted score is multiplied by 0.55 + 0.45 × data confidence. An obscure place with unreliable data can't outrank a well-documented independent gem — low popularity alone never makes a place score highly.")
             }
             Section("Feed order") {
-                Text("The feed mixes niche score (38%), data quality (17%), affordability (10%), distance (20%) and filter relevance (15%), then re-orders to avoid several similar places in a row.")
+                Text("The feed mixes niche score (42%), data quality (17%), affordability (9%), distance (17%) and filter relevance (15%), then re-orders to avoid several similar places in a row.")
             }
         }
         .font(.system(size: 14))

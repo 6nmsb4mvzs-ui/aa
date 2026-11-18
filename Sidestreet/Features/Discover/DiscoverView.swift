@@ -255,13 +255,81 @@ struct StatusLine: View {
             }
             .font(.system(size: 12, weight: .medium).monospacedDigit())
             .foregroundStyle(Theme.textTertiary)
+            if !model.isDemo {
+                SourceStatusRow()
+            }
+            if model.isMapDataLoading {
+                Label("Loading shops, cafés and spots from OpenStreetMap — busy public map servers can take up to a minute. Results appear as they arrive.",
+                      systemImage: "hourglass")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.textSecondary)
+            }
             ForEach(model.failedSources) { failure in
                 Label("\(failure.provider.displayName) unavailable — \(failure.message)", systemImage: "exclamationmark.triangle")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Theme.warning)
                     .lineLimit(2)
             }
+            if model.mapDataFailed {
+                Button("Retry map data") { model.discover(force: true) }
+                    .buttonStyle(PillButtonStyle(prominent: false))
+            }
         }
+    }
+}
+
+/// One small chip per data source: loading, count, or failed.
+struct SourceStatusRow: View {
+    @Environment(AppModel.self) private var model
+
+    private let order: [SourceProvider] = [.openStreetMap, .appleMaps, .wikidata, .venueWebsite]
+
+    var body: some View {
+        let statuses = model.snapshot?.sourceStatuses ?? [:]
+        ScrollView(.horizontal) {
+            HStack(spacing: 6) {
+                ForEach(order.filter { statuses[$0] != nil }) { provider in
+                    SourceChip(name: shortName(provider), status: statuses[provider] ?? .idle)
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private func shortName(_ provider: SourceProvider) -> String {
+        switch provider {
+        case .openStreetMap: return "OSM"
+        case .appleMaps: return "Apple Maps"
+        case .wikidata: return "Wikidata"
+        case .venueWebsite: return "Events"
+        default: return provider.displayName
+        }
+    }
+}
+
+private struct SourceChip: View {
+    let name: String
+    let status: SourceStatus
+
+    var body: some View {
+        HStack(spacing: 4) {
+            switch status {
+            case .loading:
+                ProgressView().controlSize(.mini).tint(Theme.textSecondary)
+            case .loaded(let count), .cached(let count):
+                Text("\(count)").monospacedDigit()
+            case .failed:
+                Image(systemName: "xmark")
+            case .skipped, .idle:
+                Image(systemName: "minus")
+            }
+            Text(name)
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(status.isFailure ? Theme.warning : Theme.textSecondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Theme.surfaceRaised, in: Capsule())
     }
 }
 
